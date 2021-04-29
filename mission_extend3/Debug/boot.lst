@@ -1,0 +1,335 @@
+     1                                  ;***
+     2                                  ;
+     3                                  ; Copyright (c) 2008 北京英真时代科技有限公司。保留所有权利。
+     4                                  ;
+     5                                  ; 只有您接受 EOS 核心源代码协议（参见 License.txt）中的条款才能使用这些代码。
+     6                                  ; 如果您不接受，不能使用这些代码。
+     7                                  ;
+     8                                  ; 文件名: boot.asm
+     9                                  ;
+    10                                  ; 描述: 引导扇区。
+    11                                  ;
+    12                                  ; 
+    13                                  ;
+    14                                  ;*******************************************************************************/
+    15                                  
+    16                                  ; ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    17                                  ;                               boot.asm
+    18                                  ;
+    19                                  ;     PC 机加电后，CPU 进入实模式，分段管理内存，最多访问 1M 地址空间（没
+    20                                  ; 有打开 A20 的情况下）。CPU 首先执行 BIOS 程序，在 BIOS 完成设备检测等工
+    21                                  ; 作后，如果 BIOS 被设置为从软盘启动，则 BIOS 会将软盘的引导扇区（512 字节）
+    22                                  ; 加载到物理地址 0x7C00 - 0x7DFF 处，然后将 CPU 的 CS 寄存器设置为 0x0000,
+    23                                  ; 将 IP 寄存器设置为 0x7C00，接下来 CPU 就开始执行引导扇区中的程序。
+    24                                  ;     由于段界限为 64K，所以在不修改段寄存器的情况下只能访问 0x0000 到 0xFFFF
+    25                                  ; 的地址空间，软盘引导扇区就被加载到了此范围内，所以在软盘引导扇区程序中一般
+    26                                  ; 不需要修改段寄存器。
+    27                                  ;     此时的物理内存应该是下面的样子：
+    28                                  ;
+    29                                  ;                 +-------------------------------------+----------------------
+    30                                  ;          0x0000 |                                     |
+    31                                  ;                 |   BIOS 中断向量表 (1K)              |
+    32                                  ;                 |   BIOS Interrupt Vector Table       |
+    33                                  ;                 |                                     |
+    34                                  ;                 +-------------------------------------+
+    35                                  ;          0x0400 |   BIOS 数据区 (512 Bytes)           |
+    36                                  ;                 |   BIOS Data Area                    |
+    37                                  ;                 +-------------------------------------+
+    38                                  ;          0x0600 |                                     |
+    39                                  ;                 |                                     |
+    40                                  ;                 |             用户可用(1)             |   常规内存 (640K)
+    41                                  ;                 |                                     |  Conventional Memory
+    42                                  ;                 |                                     |
+    43                                  ;                 +-------------------------------------+
+    44                                  ;          0x7C00 |   软盘引导扇区 (512 Bytes)          |
+    45                                  ;                 |   Floppy Boot Sector                |
+    46                                  ;                 +-------------------------------------+
+    47                                  ;          0x7E00 |                                     |
+    48                                  ;                 |                                     |
+    49                                  ;                 |             用户可用(2)             |
+    50                                  ;                 |                                     |
+    51                                  ;                 |                                     |
+    52                                  ;                 +-------------------------------------+----------------------
+    53                                  ;         0xA0000 |                                     |
+    54                                  ;                 |                                     |
+    55                                  ;                 |   系统占用 (384K)                   |   上位内存 (384K)
+    56                                  ;                 |                                     |   Upper Memory
+    57                                  ;                 |                                     |
+    58                                  ;                 +-------------------------------------+----------------------
+    59                                  ;        0x100000 |                                     |
+    60                                  ;                 |                                     |   扩展内存（只有进入保护模式才能访问）
+    61                                  ;                 |               不可用                |  Extended Memory
+    62                                  ;                 Z                                     Z
+    63                                  ;                 |                                     |
+    64                                  ;    物理内存结束 |                                     |
+    65                                  ;                 +-------------------------------------+----------------------
+    66                                  ;
+    67                                  ;     EOS 的软盘引导扇区程序选择将 Loader.bin 从第一个用户可用区域的 0x1000 处开始
+    68                                  ; 加载，即从 0x1000 到 0x7BFF，所以 Loader 最大只能为 0x7C00 - 0x1000 = 0x6C00
+    69                                  ; 个字节。如果在保护模式中按照 4K 大小进行分页，则 Loader 就在一个页面的开始处。
+    70                                  ; ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    71                                  
+    72                                  	org 0x7C00
+    73 00000000 EB6D                    	jmp short Start
+    74 00000002 90                      	nop					; 这个 nop 不可少
+    75                                  
+    76                                  ; ----------------------------------------------------------------------
+    77                                  ; FAT12 引导扇区头
+    78 00000003 456E67696E74696D        Oem						db 'Engintim'	; OEM String，必须 8 个字节
+    79 0000000B 0002                    BytesPerSector			dw 512			; 每扇区字节数					----+
+    80 0000000D 01                      SectorsPerCluster		db 1			; 每簇多少扇区						|
+    81 0000000E 0100                    ReservedSectors			dw 1			; Boot 记录占用多少扇区				|
+    82 00000010 02                      Fats					db 2			; FAT 表数							|
+    83 00000011 E000                    RootEntries				dw 224			; 根目录文件数最大值				|
+    84 00000013 400B                    Sectors					dw 2880			; 扇区总数							\\ BPB
+    85 00000015 F0                      Media					db 0xF0			; 介质描述							// BIOS Parameter Block
+    86 00000016 0900                    SectorsPerFat			dw 9			; 每 FAT 扇区数						|
+    87 00000018 1200                    SectorsPerTrack			dw 18			; 每磁道扇区数						|
+    88 0000001A 0200                    Heads					dw 2			; 磁头数							|
+    89 0000001C 00000000                HiddenSectors			dd 0			; 隐藏扇区数						|
+    90 00000020 00000000                LargeSectors			dd 0			; 扇区总数，Sectors 为 0 时使用	----+
+    91 00000024 00                      DriveNumber				db 0			; 驱动器号
+    92 00000025 00                      Reserved				db 0			; 保留未用
+    93 00000026 29                      Signature				db 0x29			; 引导标记 (0x29)
+    94 00000027 00000000                Id						dd 0			; 卷序列号
+    95 0000002B 454F53202020202020-     VolumeLabel				db 'EOS        '; 卷标，必须 11 个字节
+    96 00000034 2020               
+    97 00000036 4641543132202020        SystemId				db 'FAT12   '	; 文件系统类型，必须 8 个字节
+    98                                  ;------------------------------------------------------------------------
+    99                                  
+   100                                  ; FAT12 文件系统相关的一些变量
+   101 0000003E 0000                    FirstSectorOfRootDir	dw 0			; 根目录的起始扇区号
+   102 00000040 0000                    RootDirectorySectors	dw 0			; 根目录占用的扇区数量
+   103 00000042 0000                    FirstSectorOfFileArea	dw 0			; 数据区的起始扇区号
+   104 00000044 0000                    BufferOfFat				dw 0			; FAT 表缓冲区地址
+   105 00000046 0000                    BufferOfRootDir			dw 0			; 根目录缓冲区地址
+   106                                  
+   107                                  LOADER_ORG				equ	0x1000				; Loader.bin 的起始地址
+   108                                  MAX_FILE_SIZE			equ 0x6C00				; Loader.bin 只占用 0x1000 到 0x7C00 的空间
+   109 00000048 0010                    wFilePos				dw	LOADER_ORG			; 用于加载 Loader.bin 的游标
+   110 0000004A 4C4F41444552202042-     LoaderFileName			db	"LOADER  BIN"		; Loader.bin 的文件名
+   111 00000053 494E               
+   112 00000055 46696C65204C6F6164-     strError:				db	"File Loader.bin not found!"
+   113 0000005E 65722E62696E206E6F-
+   114 00000067 7420666F756E6421   
+   115                                  
+   116                                  Start:
+   117                                  	; 初始化 CPU 的段寄存器为 CS 的值(0)，堆栈从 64K 向下增长
+   118 0000006F 8CC8                    	mov	ax, cs
+   119 00000071 8ED8                    	mov	ds, ax
+   120 00000073 8EC0                    	mov	es, ax
+   121 00000075 8ED0                    	mov	ss, ax
+   122 00000077 31E4                    	xor sp, sp
+   123 00000079 89E5                    	mov bp, sp
+   124                                  
+   125                                  	; 初始化屏幕
+   126 0000007B B80006                  	mov	ax, 0x0600		; AH = 0x06,  AL = 0x00
+   127 0000007E BB0007                  	mov	bx, 0x0700		; 黑底白字(BH = 0x07)
+   128 00000081 31C9                    	xor cx, cx			; 左上角: (列号  0, 行号  0)
+   129 00000083 BA4F18                  	mov	dx, 0x184F		; 右下角: (列号 79, 行号 24)
+   130 00000086 CD10                    	int	0x10
+   131                                  	
+   132                                  	; 软驱复位
+   133 00000088 30E4                    	xor	ah, ah
+   134 0000008A 30D2                    	xor	dl, dl
+   135 0000008C CD13                    	int	0x13
+   136                                  	
+   137                                  	;
+   138                                  	; 计算根目录的起始扇区号
+   139                                  	; FirstSectorOfRootDir = ReservedSectors + SectorsPerFat * Fats
+   140                                  	;
+   141 0000008E A1[1600]                	mov ax, word [SectorsPerFat]
+   142 00000091 0FB61E[1000]            	movzx bx, byte [Fats]
+   143 00000096 F7E3                    	mul bx
+   144 00000098 0306[0E00]              	add ax, word [ReservedSectors]
+   145 0000009C A3[3E00]                	mov word [FirstSectorOfRootDir], ax
+   146                                  	
+   147                                  	;
+   148                                  	; 计算根目录占用的扇区数量
+   149                                  	; RootDirectorySectors = RootEntries * 32 / BytesPerSector
+   150                                  	;
+   151 0000009F A1[1100]                	mov ax, word [RootEntries]
+   152 000000A2 C1E005                  	shl ax, 5
+   153 000000A5 8B1E[0B00]              	mov bx, word [BytesPerSector]
+   154 000000A9 F7F3                    	div bx
+   155 000000AB A3[4000]                	mov word [RootDirectorySectors], ax
+   156                                  	
+   157                                  	;
+   158                                  	; 计算数据区域的起始扇区号
+   159                                  	; FirstSectorOfFileArea = FirstSectorOfRootDir + RootDirectorySectors
+   160                                  	;
+   161 000000AE 0306[3E00]              	add ax, word [FirstSectorOfRootDir]
+   162 000000B2 A3[4200]                	mov word [FirstSectorOfFileArea], ax
+   163                                  	
+   164                                  	;
+   165                                  	; 计算 FAT 缓冲区地址（紧接在引导扇区后）
+   166                                  	; BufferOfFat = 0x7C00 + BytesPerSector * ReservedSectors
+   167                                  	;
+   168 000000B5 A1[0B00]                	mov ax, word [BytesPerSector]
+   169 000000B8 F726[0E00]              	mul word [ReservedSectors]
+   170 000000BC 05007C                  	add ax, 0x7C00
+   171 000000BF A3[4400]                	mov word [BufferOfFat], ax
+   172                                  	
+   173                                  	;
+   174                                  	; 计算根目录缓冲区地址（紧接在 FAT 缓冲区后）
+   175                                  	; BufferOfRootDir = BufferOfFat + BytesPerSector * SectorsPerFat
+   176                                  	;
+   177 000000C2 A1[0B00]                	mov ax, word [BytesPerSector]
+   178 000000C5 F726[1600]              	mul word [SectorsPerFat]
+   179 000000C9 0306[4400]              	add ax, word [BufferOfFat]
+   180 000000CD A3[4600]                	mov word [BufferOfRootDir], ax
+   181                                  	
+   182                                  	; 将 FAT1 读入 FAT 缓冲区
+   183 000000D0 A1[0E00]                	mov ax, word [ReservedSectors]		; 
+   184 000000D3 8B0E[1600]              	mov cx, word [SectorsPerFat]		; 一个 FAT 表的扇区数量
+   185 000000D7 8B1E[4400]              	mov bx, word [BufferOfFat]			; es:bx 指向 FAT 表缓冲区
+   186 000000DB E8BB00                  	call ReadSector
+   187                                  	
+   188                                  	; 将根目录读入缓冲区
+   189 000000DE A1[3E00]                	mov ax, word[FirstSectorOfRootDir]
+   190 000000E1 8B0E[4000]              	mov cx, word[RootDirectorySectors]
+   191 000000E5 8B1E[4600]              	mov bx, word[BufferOfRootDir]
+   192 000000E9 E8AD00                  	call ReadSector
+   193                                  	
+   194                                  	; 在根目录中查找 Loader.bin 文件
+   195                                  FindFile:
+   196 000000EC 8B1E[4600]              	mov	bx, word [BufferOfRootDir]		; bx 指向第一个根目录项
+   197 000000F0 8B16[1100]              	mov dx, word [RootEntries]			; 根目录项总数
+   198 000000F4 FC                      	cld
+   199                                  
+   200                                  CompareNextDirEntry:
+   201 000000F5 BE[4A00]                	mov	si, LoaderFileName				; si -> "LOADER  BIN"
+   202 000000F8 89DF                    	mov di, bx							; di -> 目录项中文件名字符串
+   203 000000FA B90B00                  	mov	cx, 11							; 文件名字符串的长度
+   204 000000FD F3A6                    	repe cmpsb							; 字符串比较
+   205 000000FF 81F90000                	cmp	cx, 0
+   206 00000103 0F840C00                	je	CheckFileSize					; 如果比较了 11 个字符都相等, 表示找到文件
+   207                                  	
+   208                                  	; 文件名不一致，继续比较下一个目录项
+   209 00000107 81C32000                	add bx, 0x20						; bx 指向下一个目录项
+   210 0000010B 4A                      	dec dx								; 减小剩余目录项
+   211 0000010C 0F85E5FF                	jnz CompareNextDirEntry
+   212                                  	
+   213                                  	; 查找完所有目录项仍没有找到文件，提示出错
+   214 00000110 E97300                  	jmp	Error
+   215                                  
+   216                                  	; 找到文件后，检查文件的大小
+   217                                  CheckFileSize:
+   218 00000113 668B471C                	mov eax, dword [bx + 0x1C]			; 得到文件的大小
+   219 00000117 6685C0                  	test eax, eax
+   220 0000011A 0F846800                	jz Error
+   221 0000011E 663D006C0000            	cmp eax, MAX_FILE_SIZE
+   222 00000124 0F875E00                	ja Error
+   223                                  	
+   224                                  	; 开始加载文件
+   225 00000128 8B471A                  	mov	ax, word [bx + 0x1A]			; 初始化 ax 为文件的第一个簇号
+   226                                  ReadNextCluster:
+   227 0000012B 50                      	push ax								; 保存要读取的簇号
+   228                                  	
+   229                                  	;
+   230                                  	; 计算 ax 号簇对应的扇区号，扇区号 = 数据区起始扇区号 + （簇号 - 2） * 每簇扇区数
+   231                                  	;
+   232 0000012C 2D0200                  	sub ax, 2
+   233 0000012F 0FB60E[0D00]            	movzx cx, byte [SectorsPerCluster]
+   234 00000134 F7E1                    	mul	cx
+   235 00000136 0306[4200]              	add ax, word [FirstSectorOfFileArea]
+   236                                  	
+   237 0000013A 8B1E[4800]              	mov bx, word [wFilePos];			; 文件缓冲区地址
+   238                                  	
+   239 0000013E E85800                  	call ReadSector						; 读一个簇
+   240                                  	
+   241                                  	;
+   242                                  	; 文件位置向后移动一个簇的大小
+   243                                  	; wFilePos = wFilePos + BytesPerSector * SectorsPerCluster
+   244                                  	;
+   245 00000141 A1[0B00]                	mov ax, word [BytesPerSector]
+   246 00000144 0FB61E[0D00]            	movzx bx, byte [SectorsPerCluster]
+   247 00000149 F7E3                    	mul bx
+   248 0000014B 0306[4800]              	add ax, word [wFilePos];
+   249 0000014F A3[4800]                	mov word [wFilePos], ax		
+   250                                  	
+   251                                  	; 查找 FAT 表，获得下一个要读取的簇
+   252 00000152 58                      	pop ax								; 刚读取的簇号
+   253 00000153 BB0300                  	mov bx, 3
+   254 00000156 F7E3                    	mul bx
+   255 00000158 BB0200                  	mov bx, 2
+   256 0000015B F7F3                    	div bx
+   257 0000015D 8B1E[4400]              	mov bx, word [BufferOfFat]
+   258 00000161 01C3                    	add bx, ax
+   259 00000163 8B07                    	mov ax, word [bx]
+   260 00000165 85D2                    	test dx, dx
+   261 00000167 0F840600                	jz EvenClusterNo
+   262 0000016B C1E804                  	shr	ax, 4
+   263 0000016E E90300                  	jmp CheckEOC
+   264                                  EvenClusterNo:
+   265 00000171 25FF0F                  	and ax, 0x0FFF
+   266                                  	
+   267                                  	; 根据簇号判断文件是否结束，如没结束则继续读取
+   268                                  CheckEOC:
+   269 00000174 3DF70F                  	cmp ax, 0x0FF7
+   270 00000177 0F82B0FF                	jb	ReadNextCluster
+   271                                  	
+   272                                  	; 文件读取完毕，关闭软驱马达
+   273 0000017B BAF203                  	mov	dx, 0x03F2
+   274 0000017E 30C0                    	xor	al, al
+   275 00000180 EE                      	out	dx, al
+   276                                  	
+   277                                  	; Loader.bin 加载完毕，跳转到 Loader.bin 执行
+   278 00000181 EA00100000              	jmp	0:LOADER_ORG
+   279                                  	
+   280                                  	; 出错处理：在屏幕左上角显示错误信息字符串，并且死循环
+   281                                  Error:	
+   282 00000186 BD[5500]                	mov bp, strError
+   283 00000189 B80113                  	mov	ax, 0x1301				; AH = 0x13,  AL = 0x01
+   284 0000018C BB0700                  	mov	bx, 0x0007				; 页号为 0 (BH = 0x00)，黑底白字 (BL = 0x07)
+   285 0000018F B91A00                  	mov cx, 26					; 字符串长度
+   286 00000192 31D2                    	xor dx, dx
+   287 00000194 CD10                    	int	0x10
+   288 00000196 E9FDFF                  	jmp $
+   289                                  
+   290                                  ;----------------------------------------------------------------------------
+   291                                  ; 函数名: ReadSector
+   292                                  ; 作  用: 从第 ax 个 Sector 开始, 将 cl 个 Sector 读入 es:bx 中
+   293                                  ;----------------------------------------------------------------------------
+   294                                  ReadSector:
+   295 00000199 55                      	push bp
+   296 0000019A 89E5                    	mov	bp, sp
+   297 0000019C 51                      	push cx						; 保存 cl
+   298 0000019D 53                      	push bx						; 保存 bx
+   299                                  	
+   300                                  	;
+   301                                  	; 计算 柱面号、起始扇区 和 磁头号
+   302                                  	; 设扇区号为 x
+   303                                  	;                           ┌ 柱面号 = y >> 1
+   304                                  	;       x           ┌ 商 y ┤
+   305                                  	; -------------- => ┤      └ 磁头号 = y & 1
+   306                                  	;  每磁道扇区数     │
+   307                                  	;                   └ 余 z => 起始扇区号 = z + 1
+   308                                  	;
+   309 0000019E 8A1E[1800]              	mov	bl, [SectorsPerTrack]	; bl: 除数
+   310 000001A2 F6F3                    	div	bl						; y 在 al 中, z 在 ah 中
+   311 000001A4 FEC4                    	inc	ah						; z ++
+   312 000001A6 88E1                    	mov	cl, ah					; cl <- 起始扇区号
+   313 000001A8 88C6                    	mov	dh, al					; dh <- y
+   314 000001AA D0E8                    	shr	al, 1					; y >> 1 (其实是 y / Heads, 这里 Heads = 2)
+   315 000001AC 88C5                    	mov	ch, al					; ch <- 柱面号
+   316 000001AE 80E601                  	and	dh, 1					; dh & 1 = 磁头号
+   317 000001B1 8A16[2400]              	mov	dl, [DriveNumber]		; 驱动器号 (0 表示 A 盘)
+   318 000001B5 5B                      	pop bx						; 恢复 bx
+   319                                  	
+   320                                  .GoOnReading:
+   321 000001B6 B402                    	mov	ah, 2					; 读
+   322 000001B8 8A46FE                  	mov	al, byte [bp-2]			; 读 al 个扇区
+   323 000001BB CD13                    	int	0x13
+   324 000001BD 0F82F5FF                	jc	.GoOnReading			; 如果读取错误 CF 会被置为 1, 这时就不停地读, 直到正确为止
+   325                                  
+   326                                  	; 恢复堆栈并返回
+   327 000001C1 59                      	pop cx
+   328 000001C2 5D                      	pop	bp
+   329 000001C3 C3                      	ret
+   330                                  
+   331                                  	;
+   332                                  	; 引导扇区代码结束，填充剩下的空间，使生成的二进制代码恰好为 512 字节
+   333                                  	;
+   334 000001C4 00<rept>                	times 	510-($-$$)	db	0
+   335 000001FE 55AA                    	dw 	0xaa55					; 引导扇区激活标志

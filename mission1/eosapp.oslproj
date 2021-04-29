@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="gb2312"?>
+<OSLProject Version="1.00" Name="eosapp" ProjectType="eosapp" SubjectID="1580a23c-aa04-4cf3-8cca-488dc577df8d" IncrementalUpload="-1">
+	<Configurations>
+		<Configuration Name="Debug" DebuggerFlavor="1" RemoteMachine="5" AdditionalSymbolFileLocation="sdk\bin\debug\kernel.dll;0x80011000" PreDebugCommand="echo 制作软盘镜像...&#xA;echo A:\$(TargetFileName) &gt; &quot;$(OutDir)\autorun.txt&quot;&#xA;echo 将引导扇区程序 boot.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /mbr &quot;sdk\bin\debug\boot.bin&quot;&#xA;echo 将加载程序 loader.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;sdk\bin\debug\loader.bin&quot; /y&#xA;echo 将 EOS 内核程序 kernel.dll 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;sdk\bin\debug\kernel.dll&quot; /y&#xA;echo 将 EOS 应用程序 $(TargetFileName) 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(TargetPath)&quot; /y&#xA;echo 将自动运行脚本 autorun.txt 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(OutDir)\autorun.txt&quot; /y&#xA;">
+			<Tool Name="PreBuildEventTool"/>
+			<Tool Name="CustomBuildTool"/>
+			<Tool Name="GCCCompilerTool" AdditionalIncludeDirectories="sdk\inc;crt\inc" PreprocessorDefinitions="_DEBUG" GenerateDebugInformation="-1" CompileAs="1"/>
+			<Tool Name="NASMAssemblerTool"/>
+			<Tool Name="PreLinkEventTool"/>
+			<Tool Name="GCCLinkerTool" AdditionalLibraries="kernel" AdditionalLibraryDirectories="sdk\bin\debug" IgnoreStandardLibraries="-1" EntryPointSymbol="__start" BaseAddress="0x400000"/>
+			<Tool Name="PostBuildEventTool" CommandLine="sign &quot;$(TargetPath)&quot;" Description="正在对 EOS 应用程序签名..."/>
+		</Configuration>
+		<Configuration Name="Release" DebuggerFlavor="1" RemoteMachine="5" PreDebugCommand="echo 制作软盘镜像...&#xA;echo A:\$(TargetFileName) &gt; &quot;$(OutDir)\autorun.txt&quot;&#xA;echo 将引导扇区程序 boot.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /mbr &quot;sdk\bin\release\boot.bin&quot;&#xA;echo 将加载程序 loader.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;sdk\bin\release\loader.bin&quot; /y&#xA;echo 将 EOS 内核程序 kernel.dll 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;sdk\bin\release\kernel.dll&quot; /y&#xA;echo 将 EOS 应用程序 $(TargetFileName) 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(TargetPath)&quot; /y&#xA;echo 将自动运行脚本 autorun.txt 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(OutDir)\autorun.txt&quot; /y&#xA;">
+			<Tool Name="PreBuildEventTool"/>
+			<Tool Name="CustomBuildTool"/>
+			<Tool Name="GCCCompilerTool" AdditionalIncludeDirectories="sdk\inc;crt\inc" CompileAs="1"/>
+			<Tool Name="NASMAssemblerTool"/>
+			<Tool Name="PreLinkEventTool"/>
+			<Tool Name="GCCLinkerTool" AdditionalLibraries="kernel" AdditionalLibraryDirectories="sdk\bin\release" IgnoreStandardLibraries="-1" EntryPointSymbol="__start" BaseAddress="0x400000"/>
+			<Tool Name="PostBuildEventTool" CommandLine="sign &quot;$(TargetPath)&quot;" Description="正在对 EOS 应用程序签名..."/>
+		</Configuration>
+	</Configurations>
+	<Files>
+		<Filter Name="bochs">
+			<File RelativePath=".\bochs\BIOS-bochs-latest" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochs.exe" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochsdbg.exe" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochsrc.bxrc" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochsrcdbg.bxrc" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\Hard Disk.vhd" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\VGABIOS-lgpl-latest" NoUpload="-1">
+			</File>
+		</Filter>
+		<Filter Name="crt">
+			<Filter Name="inc">
+				<File RelativePath=".\crt\inc\stdarg.h">
+				</File>
+				<File RelativePath=".\crt\inc\stdio.h">
+				</File>
+				<File RelativePath=".\crt\inc\stdlib.h">
+				</File>
+				<File RelativePath=".\crt\inc\string.h">
+				</File>
+			</Filter>
+			<Filter Name="src">
+				<File RelativePath=".\crt\src\__alloca.asm">
+				</File>
+				<File RelativePath=".\crt\src\__main.c">
+				</File>
+				<File RelativePath=".\crt\src\crt0.c">
+				</File>
+				<File RelativePath=".\crt\src\stdio.c">
+				</File>
+				<File RelativePath=".\crt\src\stdlib.c">
+				</File>
+				<File RelativePath=".\crt\src\string.c">
+				</File>
+			</Filter>
+			<File RelativePath=".\crt\License.txt">
+			</File>
+		</Filter>
+		<Filter Name="sdk">
+			<Filter Name="bin">
+				<Filter Name="debug">
+					<File RelativePath=".\sdk\bin\debug\boot.bin">
+					</File>
+					<File RelativePath=".\sdk\bin\debug\kernel.dll">
+					</File>
+					<File RelativePath=".\sdk\bin\debug\libkernel.a">
+					</File>
+					<File RelativePath=".\sdk\bin\debug\loader.bin">
+					</File>
+				</Filter>
+				<Filter Name="release">
+					<File RelativePath=".\sdk\bin\release\boot.bin">
+					</File>
+					<File RelativePath=".\sdk\bin\release\kernel.dll">
+					</File>
+					<File RelativePath=".\sdk\bin\release\libkernel.a">
+					</File>
+					<File RelativePath=".\sdk\bin\release\loader.bin">
+					</File>
+				</Filter>
+			</Filter>
+			<Filter Name="inc">
+				<File RelativePath=".\sdk\inc\eos.h">
+				</File>
+				<File RelativePath=".\sdk\inc\eosdef.h">
+				</File>
+				<File RelativePath=".\sdk\inc\error.h">
+				</File>
+			</Filter>
+		</Filter>
+		<Filter Name="头文件">
+			<File RelativePath=".\EOSApp.h">
+			</File>
+		</Filter>
+		<Filter Name="源文件" Filter="cpp;c;cc;cxx">
+			<File RelativePath=".\EOSApp.c">
+			</File>
+		</Filter>
+		<File RelativePath=".\Floppy.img">
+		</File>
+	</Files>
+</OSLProject>

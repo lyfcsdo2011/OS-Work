@@ -1,0 +1,211 @@
+     1                                  ;***
+     2                                  ;
+     3                                  ; Copyright (c) 2008 北京英真时代科技有限公司。保留所有权利。
+     4                                  ;
+     5                                  ; 只有您接受 EOS 核心源代码协议（参见 License.txt）中的条款才能使用这些代码。
+     6                                  ; 如果您不接受，不能使用这些代码。
+     7                                  ;
+     8                                  ; 文件名: hal386.asm
+     9                                  ;
+    10                                  ; 描述: 
+    11                                  ;
+    12                                  ; 
+    13                                  ;
+    14                                  ;*******************************************************************************/
+    15                                  
+    16                                  
+    17                                  global _WRITE_PORT_UCHAR
+    18                                  global _READ_PORT_UCHAR
+    19                                  global _WRITE_PORT_USHORT
+    20                                  global _READ_PORT_USHORT
+    21                                  global _WRITE_PORT_ULONG
+    22                                  global _READ_PORT_ULONG
+    23                                  global _BitScanForward
+    24                                  global _BitScanReverse
+    25                                  global _KeEnableInterrupts
+    26                                  global _KiHaltProcessor
+    27                                  global _MiFlushSingleTlb
+    28                                  global _MiFlushEntireTlb
+    29                                  global _MiSetPageDirectory
+    30                                  
+    31                                  [section .text]
+    32                                  
+    33                                  _READ_PORT_UCHAR:
+    34                                  ;{
+    35 00000000 55                      	push ebp
+    36 00000001 89E5                    	mov ebp, esp
+    37                                  	
+    38 00000003 8B5508                  	mov	edx, [ebp + 8]
+    39 00000006 31C0                    	xor	eax, eax
+    40 00000008 EC                      	in	al, dx
+    41 00000009 90                      	nop
+    42 0000000A 90                      	nop
+    43                                  	
+    44 0000000B C9                      	leave
+    45 0000000C C3                      	ret
+    46                                  ;}
+    47                                  
+    48                                  _READ_PORT_USHORT:
+    49                                  ;{
+    50 0000000D 55                      	push ebp
+    51 0000000E 89E5                    	mov ebp, esp
+    52                                  	
+    53 00000010 8B5508                  	mov	edx, [ebp + 8]
+    54 00000013 31C0                    	xor	eax, eax
+    55 00000015 66ED                    	in	ax, dx
+    56 00000017 90                      	nop
+    57 00000018 90                      	nop
+    58                                  	
+    59 00000019 C9                      	leave
+    60 0000001A C3                      	ret
+    61                                  ;}
+    62                                  
+    63                                  _READ_PORT_ULONG:
+    64                                  ;{
+    65 0000001B 55                      	push ebp
+    66 0000001C 89E5                    	mov ebp, esp
+    67                                  	
+    68 0000001E 8B5508                  	mov	edx, [ebp + 8]
+    69 00000021 ED                      	in	eax, dx
+    70 00000022 90                      	nop
+    71 00000023 90                      	nop
+    72                                  	
+    73 00000024 C9                      	leave
+    74 00000025 C3                      	ret
+    75                                  ;}
+    76                                  
+    77                                  _WRITE_PORT_UCHAR:
+    78                                  ;{
+    79 00000026 55                      	push ebp
+    80 00000027 89E5                    	mov ebp, esp
+    81                                  	
+    82 00000029 8B5508                  	mov	edx, [ebp + 8]
+    83 0000002C 8B450C                  	mov	eax, [ebp + 12]
+    84 0000002F EE                      	out	dx, al
+    85 00000030 90                      	nop
+    86 00000031 90                      	nop
+    87                                  	
+    88 00000032 C9                      	leave
+    89 00000033 C3                      	ret
+    90                                  ;}
+    91                                  
+    92                                  _WRITE_PORT_USHORT:
+    93                                  ;{
+    94 00000034 55                      	push ebp
+    95 00000035 89E5                    	mov ebp, esp
+    96                                  	
+    97 00000037 8B5508                  	mov	edx, [ebp + 8]
+    98 0000003A 8B450C                  	mov	eax, [ebp + 12]
+    99 0000003D 66EF                    	out	dx, ax
+   100 0000003F 90                      	nop
+   101 00000040 90                      	nop
+   102                                  	
+   103 00000041 C9                      	leave
+   104 00000042 C3                      	ret
+   105                                  ;}
+   106                                  
+   107                                  _WRITE_PORT_ULONG:
+   108                                  ;{
+   109 00000043 55                      	push ebp
+   110 00000044 89E5                    	mov ebp, esp
+   111                                  	
+   112 00000046 8B5508                  	mov	edx, [ebp + 8]
+   113 00000049 8B450C                  	mov	eax, [ebp + 12]
+   114 0000004C EF                      	out	dx, eax
+   115 0000004D 90                      	nop
+   116 0000004E 90                      	nop
+   117                                  	
+   118 0000004F C9                      	leave
+   119 00000050 C3                      	ret
+   120                                  ;}
+   121                                  
+   122                                  _BitScanForward:
+   123                                  ;{
+   124 00000051 55                      	push ebp
+   125 00000052 89E5                    	mov ebp, esp
+   126                                  	
+   127 00000054 0FBC450C                	bsf eax, dword [ebp + 12]
+   128 00000058 0F840F000000            	jz	.ERROR
+   129                                  	
+   130 0000005E 8B4D08                  	mov ecx, [ebp + 8]
+   131 00000061 8901                    	mov [ecx], eax
+   132 00000063 B801000000              	mov eax, 1
+   133 00000068 E902000000              	jmp .RETURN
+   134                                  	
+   135                                  .ERROR:
+   136 0000006D 31C0                    	xor eax, eax
+   137                                  	
+   138                                  .RETURN:
+   139 0000006F C9                      	leave
+   140 00000070 C3                      	ret
+   141                                  ;}
+   142                                  
+   143                                  _BitScanReverse:
+   144                                  ;{
+   145 00000071 55                      	push ebp
+   146 00000072 89E5                    	mov ebp, esp
+   147                                  	
+   148 00000074 0FBD450C                	bsr eax, dword [ebp + 12]
+   149 00000078 0F840F000000            	jz	.ERROR
+   150                                  	
+   151 0000007E 8B4D08                  	mov ecx, [ebp + 8]
+   152 00000081 8901                    	mov [ecx], eax
+   153 00000083 B801000000              	mov eax, 1
+   154 00000088 E902000000              	jmp .RETURN
+   155                                  	
+   156                                  .ERROR:
+   157 0000008D 31C0                    	xor eax, eax
+   158                                  	
+   159                                  .RETURN:
+   160 0000008F C9                      	leave
+   161 00000090 C3                      	ret
+   162                                  ;}
+   163                                  
+   164                                  _KeEnableInterrupts:
+   165                                  ;{
+   166 00000091 55                      	push ebp
+   167 00000092 89E5                    	mov ebp, esp
+   168 00000094 9C                      	pushf					; store current eflags
+   169                                  
+   170 00000095 817D0800000000          	cmp dword [ebp + 8], 0	; if (EnableInt)
+   171 0000009C 0F8406000000            	je .ELSE				; {
+   172 000000A2 FB                      	sti						;	Enable interrupts.
+   173 000000A3 E901000000              	jmp .END_IF				; }
+   174                                  .ELSE:						; else {
+   175 000000A8 FA                      	cli						;	Disable interrupts.
+   176                                  .END_IF:					; }
+   177                                  
+   178 000000A9 58                      	pop eax					; eax = old eflags
+   179 000000AA 2500020000              	and eax, 1 << 9			; clear all flags except interrupt flag
+   180                                  
+   181 000000AF C9                      	leave
+   182 000000B0 C3                      	ret						; return eax
+   183                                  ;}
+   184                                  
+   185                                  _KiHaltProcessor:
+   186                                  ;{
+   187 000000B1 F4                      	hlt
+   188 000000B2 C3                      	ret
+   189                                  ;}
+   190                                  
+   191                                  _MiSetPageDirectory:
+   192                                  ;{
+   193 000000B3 8B442404                	mov eax, [esp + 4]
+   194 000000B7 C1E00C                  	shl eax, 12
+   195 000000BA 0F22D8                  	mov cr3, eax
+   196 000000BD C3                      	ret
+   197                                  ;}
+   198                                  
+   199                                  _MiFlushSingleTlb:
+   200                                  ;{
+   201 000000BE 8B442404                	mov eax, [esp + 4]
+   202 000000C2 0F0138                  	invlpg [eax]
+   203 000000C5 C3                      	ret
+   204                                  ;}
+   205                                  
+   206                                  _MiFlushEntireTlb:
+   207                                  ;{
+   208 000000C6 0F20D8                  	mov eax, cr3
+   209 000000C9 0F22D8                  	mov cr3, eax
+   210 000000CC C3                      	ret
+   211                                  ;}

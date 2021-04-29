@@ -1,0 +1,110 @@
+00000000000i[     ] Bochs x86 Emulator 2.3.7
+00000000000i[     ]   Build from CVS snapshot, on June 3, 2008
+00000000000i[     ] System configuration
+00000000000i[     ]   processors: 1 (cores=1, HT threads=1)
+00000000000i[     ]   A20 line support: yes
+00000000000i[     ]   APIC support: no
+00000000000i[     ] CPU configuration
+00000000000i[     ]   level: 5
+00000000000i[     ]   SMP support: no
+00000000000i[     ]   FPU support: yes
+00000000000i[     ]   MMX support: yes
+00000000000i[     ]   SSE support: no
+00000000000i[     ]   CLFLUSH support: no
+00000000000i[     ]   VME support: yes
+00000000000i[     ]   3dnow! support: no
+00000000000i[     ]   PAE support: no
+00000000000i[     ]   PGE support: no
+00000000000i[     ]   PSE support: yes
+00000000000i[     ]   x86-64 support: no
+00000000000i[     ]   SEP support: no
+00000000000i[     ]   MWAIT support: no
+00000000000i[     ]   XSAVE support: no
+00000000000i[     ]   AES support: no
+00000000000i[     ] Optimization configuration
+00000000000i[     ]   Guest2HostTLB support: no
+00000000000i[     ]   RepeatSpeedups support: no
+00000000000i[     ]   Icache support: no
+00000000000i[     ]   Trace cache support: no
+00000000000i[     ]   Fast function calls: no
+00000000000i[     ] Devices configuration
+00000000000i[     ]   ACPI support: no
+00000000000i[     ]   NE2000 support: no
+00000000000i[     ]   PCI support: no
+00000000000i[     ]   SB16 support: no
+00000000000i[     ]   USB support: no
+00000000000i[     ]   VGA extension support: vbe 
+00000000000i[MEM0 ] allocated memory at 02847020. after alignment, vector=02848000
+00000000000i[MEM0 ] 32.00MB
+00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('BIOS-bochs-latest')
+00000000000i[MEM0 ] rom at 0xc0000/38400 ('VGABIOS-lgpl-latest')
+00000000000i[CMOS ] Using local time for initial clock
+00000000000i[CMOS ] Setting initial clock to: Sat Nov 21 17:11:53 2020 (time0=1605949913)
+00000000000i[DMA  ] channel 4 used by cascade
+00000000000i[DMA  ] channel 2 used by Floppy Drive
+00000000000i[FDD  ] fd0: '..\floppy.img' ro=0, h=2,t=80,spt=18
+00000000000i[MEM0 ] Register memory access handlers: 0x000a0000 - 0x000bffff
+00000000000i[WGUI ] Desktop Window dimensions: 1536 x 864
+00000000000i[WGUI ] Number of Mouse Buttons = 2
+00000000000i[WGUI ] IME disabled
+00000000000i[VGA  ] interval=300000
+00000000000i[MEM0 ] Register memory access handlers: 0xe0000000 - 0xe07fffff
+00000000000i[VGA  ] VBE Bochs Display Extension Enabled
+00000000000i[     ] init_mem of 'harddrv' plugin device by virtual method
+00000000000i[     ] init_mem of 'keyboard' plugin device by virtual method
+00000000000i[     ] init_mem of 'serial' plugin device by virtual method
+00000000000i[     ] init_mem of 'parallel' plugin device by virtual method
+00000000000i[     ] init_mem of 'extfpuirq' plugin device by virtual method
+00000000000i[     ] init_mem of 'speaker' plugin device by virtual method
+00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
+00000000000i[HD   ] HD on ata0-0: 'Hard Disk.vhd' 'growing' mode 
+00000000000i[HD   ] redolog : open image Hard Disk.vhd
+00000000000i[HD   ] redolog : Standard Header : magic='Bochs Virtual HD Image', type='Redolog', subtype='Growing', version = 2.0
+00000000000i[HD   ] redolog : Specific Header : #entries=8192, bitmap size=32, exent size = 131072 disk size = 1073479680
+00000000000i[HD   ] redolog : next extent will be at index 0
+00000000000i[HD   ] 'growing' disk opened, growing file is 'Hard Disk.vhd'
+00000000000i[HD   ] ata0-0: autodetect geometry: CHS=2080/16/63
+00000000000i[HD   ] translation on ata0-0 set to 'large'
+00000000000i[HD   ] Using boot sequence floppy, none, none
+00000000000i[HD   ] Floppy boot signature check is enabled
+00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
+00000000000i[KBD  ] will paste characters every 1000 keyboard ticks
+00000000000i[     ] init_dev of 'serial' plugin device by virtual method
+00000000000i[SER  ] com1: failed to open pipe \\.\pipe\engintime.oslab.com1
+00000000000i[SER  ] com1 at 0x03f8 irq 4
+00000000000i[SER  ] com2: failed to open pipe \\.\pipe\engintime.oslab.com2
+00000000000i[SER  ] com2 at 0x02f8 irq 3
+00000000000i[     ] init_dev of 'parallel' plugin device by virtual method
+00000000000i[PAR  ] parallel port 1 at 0x0378 irq 7
+00000000000i[     ] init_dev of 'extfpuirq' plugin device by virtual method
+00000000000i[     ] init_dev of 'speaker' plugin device by virtual method
+00000000000i[     ] register state of 'harddrv' plugin device by virtual method
+00000000000i[     ] register state of 'keyboard' plugin device by virtual method
+00000000000i[     ] register state of 'serial' plugin device by virtual method
+00000000000i[     ] register state of 'parallel' plugin device by virtual method
+00000000000i[     ] register state of 'extfpuirq' plugin device by virtual method
+00000000000i[     ] register state of 'speaker' plugin device by virtual method
+00000000000i[SYS  ] bx_pc_system_c::Reset(HARDWARE) called
+00000000000i[CPU  ] cpu hardware reset
+00000000000i[     ] reset of 'harddrv' plugin device by virtual method
+00000000000i[     ] reset of 'keyboard' plugin device by virtual method
+00000000000i[     ] reset of 'serial' plugin device by virtual method
+00000000000i[     ] reset of 'parallel' plugin device by virtual method
+00000000000i[     ] reset of 'extfpuirq' plugin device by virtual method
+00000000000i[     ] reset of 'speaker' plugin device by virtual method
+00000003302i[BIOS ] $Revision: 1.209 $ $Date: 2008/06/02 20:08:10 $
+00000317639i[KBD  ] reset-disable command received
+00000437882i[VBIOS] VGABios $Id: vgabios.c,v 1.67 2008/01/27 09:44:12 vruppert Exp $
+00000437953i[VGA  ] VBE known Display Interface b0c0
+00000437985i[VGA  ] VBE known Display Interface b0c4
+00000440910i[VBIOS] VBE Bios $Id: vbe.c,v 1.60 2008/03/02 07:47:21 vruppert Exp $
+00000763911i[BIOS ] Starting rombios32
+00000764738i[BIOS ] ram_size=0x02000000
+00000765352i[BIOS ] Found 1 cpu(s)
+00000880547i[BIOS ] ata0-0: PCHS=2080/16/63 translation=large LCHS=520/64/63
+00001200000i[WGUI ] dimension update x=720 y=400 fontheight=16 fontwidth=9 bpp=8
+00004760868i[BIOS ] IDE time out
+00016897647i[BIOS ] Booting from 0000:7c00
+00018141700i[FDD  ] controller reset in software
+00044598474i[FDD  ] controller reset in software
+00044600425i[FDD  ] io_write: config control register: 0x00

@@ -1,0 +1,71 @@
+     1                                  ;***
+     2                                  ;
+     3                                  ; Copyright (c) 2008 北京英真时代科技有限公司。保留所有权利。
+     4                                  ;
+     5                                  ; 只有您接受 EOS 核心源代码协议（参见 License.txt）中的条款才能使用这些代码。
+     6                                  ; 如果您不接受，不能使用这些代码。
+     7                                  ;
+     8                                  ; 文件名: setjmp.asm
+     9                                  ;
+    10                                  ; 描述: 
+    11                                  ;
+    12                                  ; 
+    13                                  ;
+    14                                  ;*******************************************************************************/
+    15                                  
+    16                                  
+    17                                  global _setjmp
+    18                                  global _longjmp
+    19                                  
+    20                                  OFF_EBX equ 0
+    21                                  OFF_EDI equ 4
+    22                                  OFF_ESI equ 8
+    23                                  OFF_EBP equ 12
+    24                                  OFF_ESP equ 16
+    25                                  OFF_EIP equ 20
+    26                                  
+    27                                  [section .text]
+    28                                  
+    29                                  _setjmp:
+    30                                  ;{	
+    31 00000000 55                      	push ebp
+    32 00000001 89E5                    	mov ebp, esp
+    33                                  
+    34 00000003 8B4D08                  	mov ecx, [ebp + 8]			; ecx 指向 JUMP_BUFFER
+    35                                  	
+    36 00000006 8919                    	mov [ecx + OFF_EBX], ebx
+    37 00000008 897904                  	mov [ecx + OFF_EDI], edi
+    38 0000000B 897108                  	mov [ecx + OFF_ESI], esi
+    39                                  	
+    40 0000000E 8B4500                  	mov eax, [ebp]
+    41 00000011 89410C                  	mov [ecx + OFF_EBP], eax
+    42                                  	
+    43 00000014 89E0                    	mov eax, esp
+    44 00000016 0508000000              	add eax, 8
+    45 0000001B 894110                  	mov [ecx + OFF_ESP], eax
+    46                                  	
+    47 0000001E 8B4504                  	mov eax, [ebp + 4]
+    48 00000021 894114                  	mov [ecx + OFF_EIP], eax
+    49                                  	
+    50 00000024 31C0                    	xor eax, eax
+    51 00000026 C9                      	leave
+    52 00000027 C3                      	ret
+    53                                  ;}
+    54                                  
+    55                                  _longjmp:
+    56                                  ;{
+    57 00000028 55                      	push ebp
+    58 00000029 89E5                    	mov ebp, esp
+    59                                  	
+    60 0000002B 8B4D08                  	mov ecx, [ebp + 8]			; ecx 指向 JUMP_BUFFER
+    61 0000002E 8B450C                  	mov eax, [ebp + 12]			; eax = retval
+    62                                  	
+    63 00000031 8B19                    	mov ebx, [ecx + OFF_EBX]
+    64 00000033 8B7904                  	mov edi, [ecx + OFF_EDI]
+    65 00000036 8B7108                  	mov esi, [ecx + OFF_ESI]
+    66 00000039 8B690C                  	mov ebp, [ecx + OFF_EBP]
+    67 0000003C 8B6110                  	mov esp, [ecx + OFF_ESP]
+    68                                  	
+    69 0000003F FF7114                  	push dword [ecx + OFF_EIP]
+    70 00000042 C3                      	ret
+    71                                  ;}

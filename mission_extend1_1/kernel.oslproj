@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="gb2312"?>
+<OSLProject Version="1.00" Name="kernel" ProjectType="kernel" SubjectID="1580a23c-aa04-4cf3-8cca-488dc577df8d" IncrementalUpload="-1">
+	<Configurations>
+		<Configuration Name="Debug" ConfigurationType="1" DebuggerFlavor="1" RemoteMachine="5" PreDebugCommand="echo 制作软盘镜像...&#xA;echo 将引导扇区程序 boot.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /mbr &quot;$(OutDir)\boot.bin&quot;&#xA;echo 将加载程序 loader.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(OutDir)\loader.bin&quot; /y&#xA;echo 将 EOS 内核程序 $(TargetFileName) 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(TargetPath)&quot; /y">
+			<Tool Name="PreBuildEventTool"/>
+			<Tool Name="CustomBuildTool"/>
+			<Tool Name="GCCCompilerTool" PreprocessorDefinitions="_I386;_DEBUG;_KERNEL_;" GenerateDebugInformation="-1" CompileAs="1"/>
+			<Tool Name="NASMAssemblerTool" PreprocessorDefinitions="_DEBUG"/>
+			<Tool Name="PreLinkEventTool"/>
+			<Tool Name="GCCLinkerTool" OutputFile="$(OutDir)\kernel.dll" AdditionalDependencies="" IgnoreStandardLibraries="-1" EntryPointSymbol="_KiSystemStartup" BaseAddress="0x80010000"/>
+			<Tool Name="PostBuildEventTool" CommandLine="md sdk&#xA;md sdk\inc&#xA;md sdk\bin&#xA;md sdk\bin\debug&#xA;copy eosdef.h sdk\inc\eosdef.h&#xA;copy error.h sdk\inc\error.h&#xA;copy eos.h sdk\inc\eos.h&#xA;copy &quot;$(OutDir)\boot.bin&quot; sdk\bin\debug\boot.bin&#xA;copy &quot;$(OutDir)\loader.bin&quot; sdk\bin\debug\loader.bin&#xA;copy &quot;$(TargetPath)&quot; &quot;sdk\bin\debug\$(TargetFileName)&quot;&#xA;copy &quot;$(TargetDir)lib$(TargetName).a&quot; &quot;sdk\bin\debug\lib$(TargetName).a&quot;" Description="正在创建 SDK 目录..."/>
+		</Configuration>
+		<Configuration Name="Release" ConfigurationType="1" DebuggerFlavor="1" RemoteMachine="5" PreDebugCommand="echo 制作软盘镜像...&#xA;echo 将引导扇区程序 boot.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /mbr &quot;$(OutDir)\boot.bin&quot;&#xA;echo 将加载程序 loader.bin 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(OutDir)\loader.bin&quot; /y&#xA;echo 将 EOS 内核程序 $(TargetFileName) 写入软盘镜像...&#xA;FloppyImageEditor.exe Floppy.img /copy &quot;$(TargetPath)&quot; /y&#xA;">
+			<Tool Name="PreBuildEventTool"/>
+			<Tool Name="CustomBuildTool"/>
+			<Tool Name="GCCCompilerTool" PreprocessorDefinitions="_I386;_KERNEL_;" CompileAs="1"/>
+			<Tool Name="NASMAssemblerTool"/>
+			<Tool Name="PreLinkEventTool"/>
+			<Tool Name="GCCLinkerTool" OutputFile="$(OutDir)\kernel.dll" AdditionalDependencies="" IgnoreStandardLibraries="-1" EntryPointSymbol="_KiSystemStartup" BaseAddress="0x80010000"/>
+			<Tool Name="PostBuildEventTool" CommandLine="md sdk&#xA;md sdk\inc&#xA;md sdk\bin&#xA;md sdk\bin\release&#xA;copy eosdef.h sdk\inc\eosdef.h&#xA;copy error.h sdk\inc\error.h&#xA;copy eos.h sdk\inc\eos.h&#xA;copy &quot;$(OutDir)\boot.bin&quot; sdk\bin\release\boot.bin&#xA;copy &quot;$(OutDir)\loader.bin&quot; sdk\bin\release\loader.bin&#xA;copy &quot;$(TargetPath)&quot; &quot;sdk\bin\release\$(TargetFileName)&quot;&#xA;copy &quot;$(TargetDir)lib$(TargetName).a&quot; &quot;sdk\bin\release\lib$(TargetName).a&quot;" Description="正在创建 SDK 目录..."/>
+		</Configuration>
+	</Configurations>
+	<Files>
+		<Filter Name="api">
+			<File RelativePath=".\eosapi.c">
+			</File>
+		</Filter>
+		<Filter Name="bochs">
+			<File RelativePath=".\bochs\BIOS-bochs-latest" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochs.exe" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochsdbg.exe" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochsrc.bxrc" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\bochsrcdbg.bxrc" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\Hard Disk.vhd" NoUpload="-1">
+			</File>
+			<File RelativePath=".\bochs\VGABIOS-lgpl-latest" NoUpload="-1">
+			</File>
+		</Filter>
+		<Filter Name="boot">
+			<File RelativePath=".\boot.asm">
+				<FileConfiguration Name="Debug">
+					<Tool Name="NASMAssemblerTool" ObjectFile="$(OutDir)\$(InputName).bin" ObjectFormate="bin"/>
+				</FileConfiguration>
+				<FileConfiguration Name="Release">
+					<Tool Name="NASMAssemblerTool" ObjectFile="$(OutDir)\$(InputName).bin" ObjectFormate="bin"/>
+				</FileConfiguration>
+			</File>
+			<File RelativePath=".\loader.asm">
+				<FileConfiguration Name="Debug">
+					<Tool Name="NASMAssemblerTool" ObjectFile="$(OutDir)\$(InputName).bin" ObjectFormate="bin"/>
+				</FileConfiguration>
+				<FileConfiguration Name="Release">
+					<Tool Name="NASMAssemblerTool" ObjectFile="$(OutDir)\$(InputName).bin" ObjectFormate="bin"/>
+				</FileConfiguration>
+			</File>
+		</Filter>
+		<Filter Name="inc" Filter="h;hpp;hxx;inc">
+			<File RelativePath=".\eos.h">
+			</File>
+			<File RelativePath=".\eosdef.h">
+			</File>
+			<File RelativePath=".\error.h">
+			</File>
+			<File RelativePath=".\io.h">
+			</File>
+			<File RelativePath=".\ke.h">
+			</File>
+			<File RelativePath=".\mm.h">
+			</File>
+			<File RelativePath=".\ob.h">
+			</File>
+			<File RelativePath=".\ps.h">
+			</File>
+			<File RelativePath=".\rtl.h">
+			</File>
+			<File RelativePath=".\status.h">
+			</File>
+		</Filter>
+		<Filter Name="io" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+			<Filter Name="driver" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+				<File RelativePath=".\fat12.c">
+				</File>
+				<File RelativePath=".\fat12.h">
+				</File>
+				<File RelativePath=".\floppy.c">
+				</File>
+				<File RelativePath=".\keyboard.c">
+				</File>
+				<File RelativePath=".\serial.c">
+				</File>
+			</Filter>
+			<File RelativePath=".\block.c">
+			</File>
+			<File RelativePath=".\console.c">
+			</File>
+			<File RelativePath=".\file.c">
+			</File>
+			<File RelativePath=".\io.c">
+			</File>
+			<File RelativePath=".\ioinit.c">
+			</File>
+			<File RelativePath=".\iomgr.c">
+			</File>
+			<File RelativePath=".\iop.h">
+			</File>
+			<File RelativePath=".\rbuf.c">
+			</File>
+		</Filter>
+		<Filter Name="ke" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+			<Filter Name="i386" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+				<File RelativePath=".\8253.c">
+				</File>
+				<File RelativePath=".\8259.c">
+				</File>
+				<File RelativePath=".\bugcheck.c">
+				</File>
+				<File RelativePath=".\cpu.asm">
+				</File>
+				<File RelativePath=".\dispatch.c">
+				</File>
+				<File RelativePath=".\int.asm">
+				</File>
+			</Filter>
+			<File RelativePath=".\ki.h">
+			</File>
+			<File RelativePath=".\ktimer.c">
+			</File>
+			<File RelativePath=".\start.c">
+			</File>
+			<File RelativePath=".\sysproc.c">
+			</File>
+		</Filter>
+		<Filter Name="mm" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+			<Filter Name="i386" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+				<File RelativePath=".\mi386.h">
+				</File>
+			</Filter>
+			<File RelativePath=".\mempool.c">
+			</File>
+			<File RelativePath=".\mi.h">
+			</File>
+			<File RelativePath=".\mminit.c">
+			</File>
+			<File RelativePath=".\pas.c">
+			</File>
+			<File RelativePath=".\pfnlist.c">
+			</File>
+			<File RelativePath=".\ptelist.c">
+			</File>
+			<File RelativePath=".\syspool.c">
+			</File>
+			<File RelativePath=".\vadlist.c">
+			</File>
+			<File RelativePath=".\virtual.c">
+			</File>
+		</Filter>
+		<Filter Name="ob" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+			<File RelativePath=".\obhandle.c">
+			</File>
+			<File RelativePath=".\obinit.c">
+			</File>
+			<File RelativePath=".\object.c">
+			</File>
+			<File RelativePath=".\obmethod.c">
+			</File>
+			<File RelativePath=".\obp.h">
+			</File>
+			<File RelativePath=".\obtype.c">
+			</File>
+		</Filter>
+		<Filter Name="ps" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+			<Filter Name="i386" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+				<File RelativePath=".\pscxt.c">
+				</File>
+				<File RelativePath=".\psexp.c">
+				</File>
+			</Filter>
+			<File RelativePath=".\create.c">
+			</File>
+			<File RelativePath=".\delete.c">
+			</File>
+			<File RelativePath=".\event.c">
+			</File>
+			<File RelativePath=".\mutex.c">
+			</File>
+			<File RelativePath=".\peldr.c">
+			</File>
+			<File RelativePath=".\psinit.c">
+			</File>
+			<File RelativePath=".\psobject.c">
+			</File>
+			<File RelativePath=".\psp.h">
+			</File>
+			<File RelativePath=".\psspnd.c">
+			</File>
+			<File RelativePath=".\psstart.c">
+			</File>
+			<File RelativePath=".\sched.c">
+			</File>
+			<File RelativePath=".\semaphore.c">
+			</File>
+		</Filter>
+		<Filter Name="rtl" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+			<Filter Name="i386" Filter="h;hpp;hxx;inc;c;cpp;cxx;asm">
+				<File RelativePath=".\hal386.asm">
+				</File>
+				<File RelativePath=".\setjmp.asm">
+				</File>
+			</Filter>
+			<File RelativePath=".\crt.c">
+			</File>
+			<File RelativePath=".\generr.c">
+			</File>
+			<File RelativePath=".\keymap.c">
+			</File>
+			<File RelativePath=".\list.c">
+			</File>
+		</Filter>
+		<File RelativePath=".\Floppy.img">
+		</File>
+		<File RelativePath=".\License.txt">
+		</File>
+	</Files>
+</OSLProject>

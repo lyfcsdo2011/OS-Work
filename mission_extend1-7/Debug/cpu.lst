@@ -1,0 +1,109 @@
+     1                                  ;***
+     2                                  ;
+     3                                  ; Copyright (c) 2008 北京英真时代科技有限公司。保留所有权利。
+     4                                  ;
+     5                                  ; 只有您接受 EOS 核心源代码协议（参见 License.txt）中的条款才能使用这些代码。
+     6                                  ; 如果您不接受，不能使用这些代码。
+     7                                  ;
+     8                                  ; 文件名: cpu.asm
+     9                                  ;
+    10                                  ; 描述: 
+    11                                  ;
+    12                                  ; 
+    13                                  ;
+    14                                  ;*******************************************************************************/
+    15                                  
+    16                                  
+    17                                  ;
+    18                                  ; 导出符号
+    19                                  ;
+    20                                  global _KiInitializeProcessor
+    21                                  global _KeCodeSegmentSelector
+    22                                  global _KeDataSegmentSelector
+    23                                  global _Gdt
+    24                                  global _CsDesc
+    25                                  global _DsDesc
+    26                                  
+    27                                  ;
+    28                                  ; 用于定义 i386 描述符的宏，三个参数分别是 基址、界限、属性（属性见下面定义）
+    29                                  ;
+    30                                  %macro Descriptor 3
+    31                                  	dw	%2 & 0xFFFF							; 段界限 1						(2 字节)
+    32                                  	dw	%1 & 0xFFFF							; 段基址 1						(2 字节)
+    33                                  	db	(%1 >> 16) & 0xFF					; 段基址 2						(1 字节)
+    34                                  	dw	((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF); 属性 1 + 段界限 2 + 属性 2	(2 字节)
+    35                                  	db	(%1 >> 24) & 0xFF					; 段基址 3						(1 字节)
+    36                                  %endmacro ; 共 8 字节
+    37                                  
+    38                                  ;
+    39                                  ; 描述符属性
+    40                                  ;
+    41                                  DA_32			equ		0x4000	; 32 位段
+    42                                  DA_LIMIT_4K		equ		0x8000	; 段界限粒度为 4K 字节
+    43                                  DA_DRW			equ		0x92	; 存在的可读写数据段属性值
+    44                                  DA_CR			equ		0x9A	; 存在的可执行可读代码段属性值
+    45                                  
+    46                                  [section .data]
+    47                                  
+    48                                  ;
+    49                                  ; 定义全局描述符表
+    50                                  ;
+    51                                  ;							段基址,		段界限,		属性
+    52                                  _Gdt:		Descriptor		0,			0,			0								; 空描述符
+    53                              <1> _Gdt: 
+    54 00000000 0000                <1>  dw %2 & 0xFFFF
+    55 00000002 0000                <1>  dw %1 & 0xFFFF
+    56 00000004 00                  <1>  db (%1 >> 16) & 0xFF
+    57 00000005 0000                <1>  dw ((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF)
+    58 00000007 00                  <1>  db (%1 >> 24) & 0xFF
+    59                                  _CsDesc:	Descriptor		0,			0x0FFFFF,	DA_CR  | DA_32 | DA_LIMIT_4K	; 0 ~ 4G 的代码段
+    60                              <1> _CsDesc: 
+    61 00000008 FFFF                <1>  dw %2 & 0xFFFF
+    62 0000000A 0000                <1>  dw %1 & 0xFFFF
+    63 0000000C 00                  <1>  db (%1 >> 16) & 0xFF
+    64 0000000D 9ACF                <1>  dw ((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF)
+    65 0000000F 00                  <1>  db (%1 >> 24) & 0xFF
+    66                                  _DsDesc:	Descriptor		0,			0x0FFFFF,	DA_DRW | DA_32 | DA_LIMIT_4K	; 0 ~ 4G 的数据段
+    67                              <1> _DsDesc: 
+    68 00000010 FFFF                <1>  dw %2 & 0xFFFF
+    69 00000012 0000                <1>  dw %1 & 0xFFFF
+    70 00000014 00                  <1>  db (%1 >> 16) & 0xFF
+    71 00000015 92CF                <1>  dw ((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF)
+    72 00000017 00                  <1>  db (%1 >> 24) & 0xFF
+    73                                  
+    74                                  GDT_SIZE					equ	$ - _Gdt				; 全局描述符表的长度
+    75 00000018 0800                    _KeCodeSegmentSelector		dw	_CsDesc - _Gdt			; 代码段选择子
+    76 0000001A 1000                    _KeDataSegmentSelector		dw	_DsDesc - _Gdt			; 数据段选择子
+    77                                  
+    78                                  [section .text]
+    79                                  
+    80                                  _KiInitializeProcessor:
+    81                                  ;{
+    82 00000000 55                      	push ebp
+    83 00000001 89E5                    	mov ebp, esp
+    84                                  	
+    85                                  	;
+    86                                  	; 加载全局描述符表。
+    87                                  	;
+    88 00000003 68[00000000]            	push dword _Gdt
+    89 00000008 66681800                	push word GDT_SIZE
+    90 0000000C 0F011424                	lgdt [esp]
+    91 00000010 81C406000000            	add esp, 6
+    92                                  	
+    93                                  	;
+    94                                  	; 设置代码段和数据段的选择子。
+    95                                  	; 注意：设置代码段选择子只能通过一个长跳转实现。
+    96                                  	;
+    97 00000016 EA[1D000000]0800        	jmp dword (_CsDesc - _Gdt):.SET_DS
+    98                                  
+    99                                  .SET_DS:
+   100 0000001D 66B81000                	mov ax, (_DsDesc - _Gdt)
+   101 00000021 8ED8                    	mov ds, ax
+   102 00000023 8EC0                    	mov es, ax
+   103 00000025 8EE0                    	mov fs, ax
+   104 00000027 8EE8                    	mov gs, ax
+   105 00000029 8ED0                    	mov ss, ax
+   106                                  	
+   107 0000002B C9                      	leave
+   108 0000002C C3                      	ret
+   109                                  ;}

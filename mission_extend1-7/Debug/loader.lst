@@ -1,0 +1,884 @@
+     1                                  ;***
+     2                                  ;
+     3                                  ; Copyright (c) 2008 北京英真时代科技有限公司。保留所有权利。
+     4                                  ;
+     5                                  ; 只有您接受 EOS 核心源代码协议（参见 License.txt）中的条款才能使用这些代码。
+     6                                  ; 如果您不接受，不能使用这些代码。
+     7                                  ;
+     8                                  ; 文件名: loader.asm
+     9                                  ;
+    10                                  ; 描述: 加载内核。
+    11                                  ;
+    12                                  ; 
+    13                                  ;
+    14                                  ;*******************************************************************************/
+    15                                  
+    16                                  
+    17                                  ; ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    18                                  ;                               loader.asm
+    19                                  ;
+    20                                  ; 系统虚拟内存基址、内核映像基址、页表项基址等引导配置参数。
+    21                                  ;
+    22                                  SYSTEM_VIRTUAL_BASE		equ 0x80000000
+    23                                  IMAGE_VIRTUAL_BASE		equ 0x80010000
+    24                                  MAX_IMAGE_SIZE			equ	0x90000
+    25                                  PTE_BASE				equ 0xC0000000
+    26                                  ;
+    27                                  ; ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    28                                  ;
+    29                                  ; 计算机启动时，BIOS 把 512 字节的引导扇区加载到 0000:0x7C00 处并开始执行，然
+    30                                  ; 后引导扇区再把 Loader.bin 加载到 0000:0x1000 处并开始执行。
+    31                                  ;
+    32                                  	org 0x1000
+    33 00000000 E91801                  	jmp	Start
+    34                                  
+    35                                  ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    36                                  ;								数据区域
+    37                                  ;
+    38                                  ; FAT12引导扇区头。
+    39                                  ;
+    40                                  BOOT_ORG				equ 0x7C00			; 引导扇区在内存中的位置
+    41                                  Oem						equ BOOT_ORG + 3
+    42                                  BytesPerSector			equ BOOT_ORG + 11
+    43                                  SectorsPerCluster		equ BOOT_ORG + 13
+    44                                  ReservedSectors			equ BOOT_ORG + 14
+    45                                  Fats					equ BOOT_ORG + 16
+    46                                  RootEntries				equ BOOT_ORG + 17
+    47                                  Sectors					equ BOOT_ORG + 19
+    48                                  Media					equ BOOT_ORG + 21
+    49                                  SectorsPerFat			equ BOOT_ORG + 22
+    50                                  SectorsPerTrack			equ BOOT_ORG + 24
+    51                                  Heads					equ BOOT_ORG + 26
+    52                                  HiddenSectors			equ BOOT_ORG + 28
+    53                                  LargeSectors			equ BOOT_ORG + 32
+    54                                  DriveNumber				equ BOOT_ORG + 36
+    55                                  Reserved				equ BOOT_ORG + 37
+    56                                  Signature				equ BOOT_ORG + 38
+    57                                  Id						equ BOOT_ORG + 39
+    58                                  VolumeLabel				equ BOOT_ORG + 43
+    59                                  SystemId				equ BOOT_ORG + 54  
+    60                                  
+    61                                  ;
+    62                                  ; 文件系统变量定义。
+    63                                  ;
+    64 00000003 0000                    FirstSectorOfRootDir	dw 0				; 根目录的起始扇区号
+    65 00000005 0000                    RootDirectorySectors	dw 0				; 根目录占用的扇区数量
+    66 00000007 0000                    FirstSectorOfFileArea	dw 0				; 数据区的起始扇区号
+    67 00000009 0000                    BufferOfFat				dw 0				; FAT 表缓冲区地址
+    68 0000000B 0000                    BufferOfRootDir			dw 0				; 根目录缓冲区地址
+    69 0000000D 0000                    DirectoryEntry			dw 0				; 目录项指针
+    70                                  
+    71                                  ;
+    72                                  ; 用于定义描述符的宏。
+    73                                  ; 用法: Descriptor Base, Limit, Attr
+    74                                  ;
+    75                                  %macro Descriptor 3
+    76                                  	dw	%2 & 0xFFFF							; 段界限 1						(2 字节)
+    77                                  	dw	%1 & 0xFFFF							; 段基址 1						(2 字节)
+    78                                  	db	(%1 >> 16) & 0xFF					; 段基址 2						(1 字节)
+    79                                  	dw	((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF); 属性 1 + 段界限 2 + 属性 2	(2 字节)
+    80                                  	db	(%1 >> 24) & 0xFF					; 段基址 3						(1 字节)
+    81                                  %endmacro ; 共 8 字节
+    82                                  
+    83                                  ;
+    84                                  ; 描述符属性定义。
+    85                                  ;
+    86                                  DA_32					equ	0x4000			; 32 位段
+    87                                  DA_LIMIT_4K				equ	0x8000			; 段界限粒度为 4K 字节
+    88                                  DA_DRW					equ	0x92			; 存在的可读写数据段属性值
+    89                                  DA_CR					equ	0x9A			; 存在的可执行可读代码段属性值
+    90                                  PG_ATTR					equ 3				; 存在的可读写、可执行的系统页
+    91                                  
+    92                                  ;
+    93                                  ; 全局描述符表，包含了数据段和代码段的描述符。
+    94                                  ;
+    95                                  ;			描述：			段基址,		段界限,		段属性
+    96                                  GDT:		Descriptor		0,			0,			0								; 空描述符
+    97                              <1> GDT: 
+    98 0000000F 0000                <1>  dw %2 & 0xFFFF
+    99 00000011 0000                <1>  dw %1 & 0xFFFF
+   100 00000013 00                  <1>  db (%1 >> 16) & 0xFF
+   101 00000014 0000                <1>  dw ((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF)
+   102 00000016 00                  <1>  db (%1 >> 24) & 0xFF
+   103                                  CS_DESC:	Descriptor		0,			0x0FFFFF,	DA_CR  | DA_32 | DA_LIMIT_4K	; 0 ~ 4G 的代码段
+   104                              <1> CS_DESC: 
+   105 00000017 FFFF                <1>  dw %2 & 0xFFFF
+   106 00000019 0000                <1>  dw %1 & 0xFFFF
+   107 0000001B 00                  <1>  db (%1 >> 16) & 0xFF
+   108 0000001C 9ACF                <1>  dw ((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF)
+   109 0000001E 00                  <1>  db (%1 >> 24) & 0xFF
+   110                                  DS_DESC:	Descriptor		0,			0x0FFFFF,	DA_DRW | DA_32 | DA_LIMIT_4K	; 0 ~ 4G 的数据段
+   111                              <1> DS_DESC: 
+   112 0000001F FFFF                <1>  dw %2 & 0xFFFF
+   113 00000021 0000                <1>  dw %1 & 0xFFFF
+   114 00000023 00                  <1>  db (%1 >> 16) & 0xFF
+   115 00000024 92CF                <1>  dw ((%2 >> 8) & 0x0F00) | (%3 & 0xF0FF)
+   116 00000026 00                  <1>  db (%1 >> 24) & 0xFF
+   117                                  
+   118                                  ;
+   119                                  ; 描述符表虚拟地址、大小以及选择子定义。
+   120                                  ; 注意：必须紧随在描述符表的定义之下，否则表长计算将会错误。
+   121                                  ;
+   122                                  GDT_VA					equ	SYSTEM_VIRTUAL_BASE + GDT	; 全局描述符表的虚拟基址
+   123                                  GDT_SIZE				equ	$ - GDT						; 全局描述符表的长度
+   124                                  CS_SELECTOR				equ	CS_DESC - GDT				; 代码段选择子
+   125                                  DS_SELECTOR				equ	DS_DESC - GDT				; 数据段选择子
+   126                                  
+   127                                  ;
+   128                                  ; 字符串常量定义。
+   129                                  ;
+   130 00000027 4B45524E454C202044-     szKernelFileName		db	"KERNEL  DLL",0
+   131 00000030 4C4C00             
+   132 00000033 46696C65206B65726E-     szNoKernel				db	"File kernel.dll not found!",0
+   133 0000003C 656C2E646C6C206E6F-
+   134 00000045 7420666F756E642100 
+   135 0000004E 5468652066696C6520-     szInvalidFileSize		db	"The file size of kernel.dll must less than 576KB!",0
+   136 00000057 73697A65206F66206B-
+   137 00000060 65726E656C2E646C6C-
+   138 00000069 206D757374206C6573-
+   139 00000072 73207468616E203537-
+   140 0000007B 364B422100         
+   141 00000080 4C6F6164696E67206B-     szLoading				db	"Loading kernel.dll...",0
+   142 00000089 65726E656C2E646C6C-
+   143 00000092 2E2E2E00           
+   144 00000096 54686520696D616765-     szInvalidImageSize		db	"The image size of kernel.dll must less than 0x90000!",0
+   145 0000009F 2073697A65206F6620-
+   146 000000A8 6B65726E656C2E646C-
+   147 000000B1 6C206D757374206C65-
+   148 000000BA 7373207468616E2030-
+   149 000000C3 7839303030302100   
+   150 000000CB 496E76616C69642069-     szInvalidImageBase		dd	"Invalid image base address of kernel.dll!",0
+   151 000000D4 6D6167652062617365-
+   152 000000DD 206164647265737320-
+   153 000000E6 6F66206B65726E656C-
+   154 000000EF 2E646C6C2100000000-
+   155 000000F8 000000             
+   156                                  
+   157                                  ;
+   158                                  ; LOADER_PARAMETER_BLOCK 结构体定义。
+   159                                  ;
+   160 000000FB 00000000                PhysicalMemorySize		dd	0
+   161 000000FF 00000000                MappedMemorySize		dd	0
+   162 00000103 00000080                SystemVirtualBase		dd	SYSTEM_VIRTUAL_BASE
+   163 00000107 000000C0                PageTableVirtualBase	dd	PTE_BASE
+   164 0000010B 00000000                FirstFreePageFrame		dd	0
+   165 0000010F 00000180                ImageVirtualBase		dd	IMAGE_VIRTUAL_BASE
+   166 00000113 00000000                ImageSize				dd	0
+   167 00000117 00000000                ImageEntry				dd	0
+   168                                  
+   169                                  va_LoaderBlock			equ	SYSTEM_VIRTUAL_BASE + PhysicalMemorySize
+   170                                  va_ImageEntry			equ	SYSTEM_VIRTUAL_BASE + ImageEntry
+   171                                  va_PhysicalMemorySize	equ SYSTEM_VIRTUAL_BASE + PhysicalMemorySize
+   172                                  
+   173                                  ;
+   174                                  ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   175                                  ;								实模式代码
+   176                                  ;
+   177                                  Start:
+   178                                  	;
+   179                                  	; 得到物理内存的大小
+   180 0000011B E8FD00                  	call GetMemorySize
+   181 0000011E 66A3[FB00]              	mov dword [PhysicalMemorySize], eax
+   182                                  	
+   183                                  	;
+   184                                  	; 初始化和 FAT12 文件系统相关的变量
+   185 00000122 E85701                  	call InitFAT12
+   186                                  
+   187                                  	;
+   188                                  	; 在根目录中查找文件名为 szKernelFileName 的文件，返回文件的目录项指针
+   189 00000125 68[2700]                	push word szKernelFileName
+   190 00000128 E89401                  	call OpenFile
+   191 0000012B A3[0D00]                	mov [DirectoryEntry], ax
+   192                                  
+   193                                  	;
+   194                                  	; 如果文件不存在，则提示错误并死循环
+   195 0000012E 3D0000                  	cmp ax, 0
+   196 00000131 0F850900                	jne .FILE_EXIST
+   197 00000135 68[3300]                	push word szNoKernel
+   198 00000138 E8BB00                  	call TextOut
+   199 0000013B E9FDFF                  	jmp $
+   200                                  
+   201                                  	; 
+   202                                  	; 检查文件的大小，如果大小不在区间 (0，MAX_IMAGE_SIZE]
+   203                                  	; 之内，则提示错误并死循环
+   204                                  .FILE_EXIST:
+   205 0000013E 89C3                    	mov bx, ax
+   206 00000140 668B4F1C                	mov ecx, dword [bx + 0x1C]
+   207 00000144 6681F900000000          	cmp ecx, 0
+   208 0000014B 0F840B00                	je .INVALID_FILE_SIZE
+   209 0000014F 6681F900000900          	cmp ecx, MAX_IMAGE_SIZE
+   210 00000156 0F860900                	jbe .VALID_FILE_SIZE
+   211                                  	
+   212                                  .INVALID_FILE_SIZE:
+   213 0000015A 68[4E00]                	push word szInvalidFileSize
+   214 0000015D E89600                  	call TextOut
+   215 00000160 E9FDFF                  	jmp $
+   216                                  	
+   217                                  	;
+   218                                  	; 加载内核文件到其虚拟基址对应的物理内存中
+   219                                  .VALID_FILE_SIZE:
+   220 00000163 6668[80000000]          	push dword szLoading
+   221 00000169 E88A00                  	call TextOut
+   222 0000016C 680000                  	push word 0
+   223 0000016F 680010                  	push word (IMAGE_VIRTUAL_BASE - SYSTEM_VIRTUAL_BASE) >> 4
+   224 00000172 FF36[0D00]              	push word [DirectoryEntry]
+   225 00000176 E8E801                  	call ReadFile
+   226                                  	
+   227                                  	;
+   228                                  	; 检查内核映像的虚拟基址及映像大小是否符合约定，Loader 不支持内核重定位。
+   229                                  	;
+   230                                  	; 先使 es:bx 指向 IMAGE_NT_HEADER 结构体
+   231                                  	;
+   232 00000179 B80010                  	mov	ax, (IMAGE_VIRTUAL_BASE - SYSTEM_VIRTUAL_BASE) >> 4
+   233 0000017C 8EC0                    	mov	es, ax								; es <- BaseOfKernelFile
+   234 0000017E 268B1E3C00              	mov	bx, [es:0 + 0x3C]					; bx = IMAGE_DOS_HEADER::e_lfanew，即 IMAGE_NT_HEADER 的段内偏移地址	
+   235                                  	
+   236                                  	;
+   237                                  	; 如果基址不符合约定要求则提示错误并死循环
+   238                                  	;
+   239 00000183 26668B4734              	mov eax, [es:bx + 0x34]					; eax = IMAGE_OPTIONAL_HEADER::ImageBase
+   240 00000188 663D00000180            	cmp eax, IMAGE_VIRTUAL_BASE
+   241 0000018E 0F840900                	je	.VALID_IMAGE_BASE
+   242 00000192 68[CB00]                	push word szInvalidImageBase
+   243 00000195 E85E00                  	call TextOut
+   244 00000198 E9FDFF                  	jmp $
+   245                                  	
+   246                                  	;
+   247                                  	; 如果内核映像大小超过约定最大值则提示错误并死循环。
+   248                                  	;
+   249                                  .VALID_IMAGE_BASE:
+   250 0000019B 26668B4750              	mov eax, [es:bx + 0x50]					; eax = IMAGE_OPTIONAL_HEADER::SizeOfImage
+   251 000001A0 66A3[1301]              	mov [ImageSize], eax					; ImageSize = eax
+   252 000001A4 663D00000900            	cmp eax, MAX_IMAGE_SIZE
+   253 000001AA 0F860900                	jbe .VALID_IMAGE_SIZE
+   254 000001AE 68[9600]                	push word szInvalidImageSize
+   255 000001B1 E84200                  	call TextOut
+   256 000001B4 E9FDFF                  	jmp $
+   257                                  
+   258                                  	;
+   259                                  	; 获取映像的入口地址
+   260                                  .VALID_IMAGE_SIZE:							
+   261 000001B7 26668B4728              	mov	eax, [es:bx + 0x28]					; eax = IMAGE_OPTIONAL_HEADER::AddressOfEntryPoint
+   262 000001BC 660500000180            	add eax, IMAGE_VIRTUAL_BASE
+   263 000001C2 66A3[1701]              	mov [ImageEntry], eax
+   264                                  
+   265                                  	;
+   266                                  	; 下面准备跳入保护模式
+   267 000001C6 FA                      	cli
+   268                                  	
+   269                                  	;
+   270                                  	; 加载全局描述符表
+   271 000001C7 6668[0F000000]          	push dword GDT
+   272 000001CD 681800                  	push word GDT_SIZE
+   273 000001D0 660FB7C4                	movzx eax, sp
+   274 000001D4 670F0110                	lgdt [eax]
+   275 000001D8 81C40600                	add sp, 6
+   276                                  	
+   277                                  	;
+   278                                  	; 打开地址线 A20
+   279 000001DC E492                    	in	al, 0x92
+   280 000001DE 0C02                    	or	al, 0x02
+   281 000001E0 E692                    	out	0x92, al
+   282                                  	
+   283                                  	;
+   284                                  	; 设置 cr0 的保护标志位
+   285 000001E2 0F20C0                  	mov	eax, cr0
+   286 000001E5 660D01000000            	or	eax, 1
+   287 000001EB 0F22C0                  	mov	cr0, eax
+   288                                  	
+   289                                  	;
+   290                                  	; 跳转执行保护模式代码
+   291 000001EE 66EA[20000000]0800      	jmp	dword CS_SELECTOR:ProtectionMode
+   292                                  
+   293                                  ;----------------------------------------------------------------------------
+   294                                  ; 函数名: void TextOut(char* Text)
+   295                                  ; 作  用: 显示一个字符串
+   296                                  ;----------------------------------------------------------------------------
+   297                                  TextOut:
+   298                                  ;{
+   299 000001F6 55                      	push bp
+   300 000001F7 89E5                    	mov bp, sp
+   301                                  	
+   302                                  	; 计算字符串的长度
+   303 000001F9 31C9                    	xor cx, cx
+   304 000001FB 8B7E04                  	mov di, word [bp + 4]
+   305                                  .LOOP:
+   306 000001FE 803D00                  	cmp byte [di], 0
+   307 00000201 0F840500                	je .DO_BIOS_CALL
+   308 00000205 47                      	inc di
+   309 00000206 41                      	inc cx
+   310 00000207 E9F4FF                  	jmp .LOOP
+   311                                  	
+   312                                  .DO_BIOS_CALL:
+   313 0000020A 8B6E04                  	mov bp, [bp + 4]
+   314 0000020D B80113                  	mov ax, 0x1301
+   315 00000210 BB0700                  	mov bx, 0x07
+   316 00000213 B200                    	mov dl, 0
+   317 00000215 CD10                    	int 0x10
+   318                                  	
+   319 00000217 5D                      	pop bp
+   320 00000218 C20200                  	ret 2
+   321                                  ;}
+   322                                  
+   323                                  
+   324                                  ;----------------------------------------------------------------------------
+   325                                  ; 函	数：DWORD GetMemorySize()
+   326                                  ; 作	用：返回物理内存的大小
+   327                                  ;----------------------------------------------------------------------------
+   328                                  GetMemorySize:
+   329                                  ;{
+   330 0000021B 55                      	push bp
+   331 0000021C 89E5                    	mov bp, sp
+   332                                  	
+   333                                  	; 分配堆栈变量
+   334 0000021E 81EC0400                	sub sp, 4					; 记录物理内存最高地址的变量
+   335 00000222 81EC1400                	sub sp, 20					; 地址范围描述符结构体（Address Range Descriptor Structure）变量
+   336                                  	
+   337 00000226 6631C0                  	xor eax,eax
+   338 00000229 668946FC                	mov dword [bp - 4], eax
+   339 0000022D 89E7                    	mov	di, sp					; es:di 指向地址范围描述符结构体
+   340 0000022F 66BB00000000            	mov	ebx, 0					; ebx = 后续值, 开始时需为 0
+   341                                  
+   342                                  .LOOP:
+   343 00000235 66B820E80000            	mov	eax, 0xE820				; eax = 0xE820
+   344 0000023B 66B914000000            	mov	ecx, 20					; ecx = 地址范围描述符结构的大小
+   345 00000241 66BA50414D53            	mov	edx, 0x534D4150			; edx = 'SMAP'
+   346 00000247 CD15                    	int	0x15
+   347 00000249 2666817D1001000000      	cmp	dword [es:di + 16], 1	; 检查是否是可使用内存
+   348 00000252 0F851500                	jne	.CONTINUE				; 不可使用块，不保存信息
+   349                                  	
+   350 00000256 26668B05                	mov	eax, [es:di]			; 可用内存区域的基址
+   351 0000025A 2666034508              	add	eax, [es:di + 8]		; 可用内存区域的结束地址 = 基址 + 长度
+   352 0000025F 663B46FC                	cmp	eax, [bp - 4]			;
+   353 00000263 0F860400                	jbe	.CONTINUE				;
+   354                                  	
+   355 00000267 668946FC                	mov	[bp - 4], eax			;
+   356                                  	
+   357                                  .CONTINUE:
+   358 0000026B 6681FB00000000          	cmp ebx, 0
+   359 00000272 0F85BFFF                	jne	.LOOP
+   360                                  	
+   361 00000276 668B46FC                	mov eax, [bp - 4]			; 设置返回值
+   362 0000027A C9                      	leave						; 恢复调用前的堆栈帧
+   363 0000027B C3                      	ret
+   364                                  ;}
+   365                                  	
+   366                                  ;----------------------------------------------------------------------------
+   367                                  ; 函	数：VOID InitFAT12()
+   368                                  ; 作	用：初始化文件系统参数
+   369                                  ;----------------------------------------------------------------------------
+   370                                  InitFAT12:
+   371                                  ;{
+   372                                  	;
+   373                                  	; 计算根目录的起始扇区号
+   374                                  	; FirstSectorOfRootDir = ReservedSectors + SectorsPerFat * Fats
+   375                                  	;
+   376 0000027C A1167C                  	mov ax, word [SectorsPerFat]
+   377 0000027F 0FB61E107C              	movzx bx, byte [Fats]
+   378 00000284 F7E3                    	mul bx
+   379 00000286 03060E7C                	add ax, word [ReservedSectors]
+   380 0000028A A3[0300]                	mov word [FirstSectorOfRootDir], ax
+   381                                  	
+   382                                  	;
+   383                                  	; 计算根目录占用的扇区数量
+   384                                  	; RootDirectorySectors = RootEntries * 32 / BytesPerSector
+   385                                  	;
+   386 0000028D A1117C                  	mov ax, word [RootEntries]
+   387 00000290 C1E005                  	shl ax, 5
+   388 00000293 8B1E0B7C                	mov bx, word [BytesPerSector]
+   389 00000297 F7F3                    	div bx
+   390 00000299 A3[0500]                	mov word [RootDirectorySectors], ax
+   391                                  	
+   392                                  	;
+   393                                  	; 计算数据区域的起始扇区号
+   394                                  	; FirstSectorOfFileArea = FirstSectorOfRootDir + RootDirectorySectors
+   395                                  	;
+   396 0000029C 0306[0300]              	add ax, word [FirstSectorOfRootDir]
+   397 000002A0 A3[0700]                	mov word [FirstSectorOfFileArea], ax
+   398                                  	
+   399                                  	;
+   400                                  	; 计算 FAT 缓冲区地址（紧接在引导扇区后）
+   401                                  	; BufferOfFat = BOOT_ORG + BytesPerSector * ReservedSectors
+   402                                  	;
+   403 000002A3 A10B7C                  	mov ax, word [BytesPerSector]
+   404 000002A6 F7260E7C                	mul word [ReservedSectors]
+   405 000002AA 05007C                  	add ax, BOOT_ORG
+   406 000002AD A3[0900]                	mov word [BufferOfFat], ax
+   407                                  	
+   408                                  	;
+   409                                  	; 计算根目录缓冲区地址（紧接在 FAT 缓冲区后）
+   410                                  	; BufferOfRootDir = BufferOfFat + BytesPerSector * SectorsPerFat
+   411                                  	;
+   412 000002B0 A10B7C                  	mov ax, word [BytesPerSector]
+   413 000002B3 F726167C                	mul word [SectorsPerFat]
+   414 000002B7 0306[0900]              	add ax, word [BufferOfFat]
+   415 000002BB A3[0B00]                	mov word [BufferOfRootDir], ax
+   416                                  	
+   417 000002BE C3                      	ret
+   418                                  ;}
+   419                                  
+   420                                  ;----------------------------------------------------------------------------
+   421                                  ; 函	数：DIR_ENTRY* OpenFile(char* pszFileName)
+   422                                  ; 作	用：在根目录中查找文件，并返回文件的目录项指针
+   423                                  ;----------------------------------------------------------------------------
+   424                                  OpenFile:
+   425                                  ;{
+   426 000002BF 55                      	push bp
+   427 000002C0 89E5                    	mov bp, sp
+   428 000002C2 81EC0200                	sub sp, 2							; 堆栈变量，根目录缓冲区的地址界限
+   429                                  	
+   430 000002C6 B82000                  	mov ax, 0x20						; ax = sizeof(DIR_ENTRY)
+   431 000002C9 F726117C                	mul word [RootEntries]
+   432 000002CD 8B1E[0B00]              	mov	bx, word [BufferOfRootDir]		; bx 指向第一个根目录项
+   433 000002D1 01D8                    	add ax, bx
+   434 000002D3 8946FE                  	mov [bp - 2], ax
+   435                                  	
+   436                                  .while:
+   437 000002D6 8B7604                  	mov	si, word [bp + 4]				; si -> pszFileName
+   438 000002D9 89DF                    	mov di, bx							; di -> 目录项中文件名字符串
+   439 000002DB B90B00                  	mov	cx, 11							; 文件名字符串的长度
+   440 000002DE F3A6                    	repe cmpsb							; 字符串比较
+   441 000002E0 81F90000                	cmp	cx, 0
+   442 000002E4 0F841000                	je	.return_bx						; 如果比较了 11 个字符都相等, 表示找到文件
+   443                                  	
+   444 000002E8 81C32000                	add bx, 0x20
+   445 000002EC 3B5EFE                  	cmp bx, word [bp - 2]
+   446 000002EF 0F82E3FF                	jb .while
+   447                                  	
+   448                                  .return_0:
+   449 000002F3 31C0                    	xor ax, ax	; 查找失败，返回 0
+   450 000002F5 E90200                  	jmp .ret
+   451                                  .return_bx:
+   452 000002F8 89D8                    	mov ax, bx	; 查找成功，返回目录项
+   453                                  .ret:
+   454 000002FA C9                      	leave
+   455 000002FB C20200                  	ret 2
+   456                                  ;}
+   457                                  
+   458                                  ;----------------------------------------------------------------------------
+   459                                  ; 函    数: ReadSector(WORD wSector, WORD wCount, WORD wBase, WORD wOffset)
+   460                                  ; 作    用: 从第 wSector 个扇区开始, 将 wCount(1~255) 个扇区读入 wBase:wOffset 中
+   461                                  ;----------------------------------------------------------------------------
+   462                                  ReadSector:
+   463                                  ;{
+   464 000002FE 55                      	push bp
+   465 000002FF 89E5                    	mov	bp, sp
+   466 00000301 06                      	push es
+   467                                  	
+   468                                  	;
+   469                                  	; 计算 柱面号、起始扇区 和 磁头号
+   470                                  	; 设扇区号为 x
+   471                                  	;                           ┌ 柱面号 = y >> 1
+   472                                  	;       x           ┌ 商 y ┤
+   473                                  	; -------------- => ┤      └ 磁头号 = y & 1
+   474                                  	;  每磁道扇区数     │
+   475                                  	;                   └ 余 z => 起始扇区号 = z + 1
+   476                                  	;
+   477 00000302 8B4604                  	mov ax, [bp + 4]			; ax = wSector
+   478 00000305 8A1E187C                	mov	bl, [SectorsPerTrack]	; bl: 除数
+   479 00000309 F6F3                    	div	bl						; y 在 al 中, z 在 ah 中
+   480 0000030B FEC4                    	inc	ah						; z ++
+   481 0000030D 88E1                    	mov	cl, ah					; cl <- 起始扇区号
+   482 0000030F 88C6                    	mov	dh, al					; dh <- y
+   483 00000311 D0E8                    	shr	al, 1					; y >> 1 (其实是 y / Heads, 这里 Heads = 2)
+   484 00000313 88C5                    	mov	ch, al					; ch <- 柱面号
+   485 00000315 80E601                  	and	dh, 1					; dh & 1 = 磁头号
+   486 00000318 8A16247C                	mov	dl, [DriveNumber]		; 驱动器号 (0 表示 A 盘)
+   487                                  	
+   488                                  	
+   489 0000031C 8B4608                  	mov ax, [bp + 8]
+   490 0000031F 8EC0                    	mov es, ax
+   491 00000321 8B5E0A                  	mov bx, [bp + 10]
+   492                                  .GoOnReading:
+   493 00000324 B402                    	mov	ah, 2					; 读
+   494 00000326 8A4606                  	mov	al, [bp + 6]			; 读 al 个扇区
+   495 00000329 CD13                    	int	0x13
+   496 0000032B 0F82F5FF                	jc	.GoOnReading			; 如果读取错误 CF 会被置为 1, 这时就不停地读, 直到正确为止
+   497                                  
+   498                                  	; 恢复堆栈并返回
+   499 0000032F 07                      	pop es
+   500 00000330 C9                      	leave
+   501 00000331 C20800                  	ret 8
+   502                                  ;}
+   503                                  
+   504                                  ;----------------------------------------------------------------------------
+   505                                  ; 函    数: WORD GetNextCluster(WORD wCurrentCluster)
+   506                                  ; 作    用: 找到同文件中 wCurrentCluster 的后继簇
+   507                                  ;----------------------------------------------------------------------------
+   508                                  GetNextCluster:
+   509                                  ;{
+   510 00000334 55                      	push bp
+   511 00000335 89E5                    	mov bp, sp
+   512                                  	
+   513 00000337 8B4604                  	mov ax, word[bp + 4]
+   514 0000033A BB0300                  	mov bx, 3
+   515 0000033D F7E3                    	mul bx
+   516 0000033F BB0200                  	mov bx, 2
+   517 00000342 F7F3                    	div bx
+   518 00000344 8B1E[0900]              	mov bx, word [BufferOfFat]
+   519 00000348 01C3                    	add bx, ax
+   520 0000034A 8B07                    	mov ax, word [bx]
+   521 0000034C 81FA0000                	cmp dx, 0
+   522 00000350 0F840600                	jz .else
+   523 00000354 C1E804                  	shr	ax, 4
+   524 00000357 E90300                  	jmp .return
+   525                                  .else:
+   526 0000035A 25FF0F                  	and ax, 0x0FFF
+   527                                  
+   528                                  .return:
+   529 0000035D C9                      	leave
+   530 0000035E C20200                  	ret 2
+   531                                  ;}
+   532                                  
+   533                                  ;----------------------------------------------------------------------------
+   534                                  ; 函	数：VOID ReadFile(DIR_ENTRY* pFile, WORD wBufferBase, WORD wBufferOffset)
+   535                                  ; 作	用：读取指定文件到指定的位置
+   536                                  ;----------------------------------------------------------------------------
+   537                                  ReadFile:
+   538                                  ;{
+   539 00000361 55                      	push bp
+   540 00000362 89E5                    	mov bp, sp
+   541                                  	; 分配堆栈变量，初始化为文件的第一个簇号
+   542 00000364 8B5E04                  	mov bx, word [bp + 4]
+   543 00000367 FF771A                  	push word [bx + 0x1A]
+   544                                  	; 分配堆栈变量，初始化为每个簇的字节数
+   545 0000036A A10B7C                  	mov ax, word [BytesPerSector]
+   546 0000036D 0FB61E0D7C              	movzx bx, byte [SectorsPerCluster]
+   547 00000372 F7E3                    	mul bx
+   548 00000374 50                      	push ax
+   549                                  	 
+   550                                  	; 软驱复位
+   551 00000375 30E4                    	xor	ah, ah
+   552 00000377 30D2                    	xor	dl, dl
+   553 00000379 CD13                    	int	0x13
+   554                                  			
+   555                                  .while:
+   556                                  	; 如果文件已经结束则停止循环
+   557 0000037B 8B46FE                  	mov ax, word [bp - 2]
+   558 0000037E 3DF70F                  	cmp ax, 0x0FF7
+   559 00000381 0F873400                	ja	.return
+   560                                  	
+   561                                  	; 计算簇号对应的扇区号：数据区起始扇区号 + 每簇扇区数 * （簇号 - 2）
+   562 00000385 2D0200                  	sub ax, 2
+   563 00000388 0FB60E0D7C              	movzx cx, byte [SectorsPerCluster]
+   564 0000038D F7E1                    	mul	cx
+   565 0000038F 0306[0700]              	add ax, word [FirstSectorOfFileArea]
+   566                                  	
+   567                                  	; 读取一个簇到缓冲区中
+   568 00000393 FF7608                  	push word [bp + 8]
+   569 00000396 FF7606                  	push word [bp + 6]
+   570 00000399 51                      	push cx
+   571 0000039A 50                      	push ax
+   572 0000039B E860FF                  	call ReadSector
+   573                                  	
+   574                                  	; 根据当前簇号得到下个簇号
+   575 0000039E FF76FE                  	push word [bp - 2]
+   576 000003A1 E890FF                  	call GetNextCluster
+   577 000003A4 8946FE                  	mov word [bp - 2], ax
+   578                                  	
+   579                                  	; 文件位置向后移动一个簇的大小。如果超过了段边界，需要向后移动段基址
+   580 000003A7 8B46FC                  	mov ax, word [bp - 4]
+   581 000003AA 014608                  	add word [bp + 8], ax
+   582 000003AD 0F85CAFF                	jnz .while
+   583 000003B1 8146060010              	add word[bp + 6], 0x1000
+   584 000003B6 E9C2FF                  	jmp .while
+   585                                  	
+   586                                  .return:
+   587                                  	; 关闭软驱马达
+   588 000003B9 BAF203                  	mov	dx, 0x03F2
+   589 000003BC 30C0                    	xor al, al
+   590 000003BE EE                      	out	dx, al
+   591                                  	; 恢复堆栈
+   592 000003BF C9                      	leave
+   593 000003C0 C20600                  	ret 6
+   594                                  ;}
+   595                                  
+   596                                  ;
+   597                                  ;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+   598                                  ;								保护模式代码
+   599                                  [SECTION .s32]
+   600 00000000 90<rept>                ALIGN	32
+   601                                  [BITS	32]
+   602                                  
+   603                                  ProtectionMode:
+   604 00000020 66B81000                	mov	ax, DS_SELECTOR
+   605 00000024 8ED8                    	mov	ds, ax
+   606 00000026 8EC0                    	mov	es, ax
+   607 00000028 8EE0                    	mov	fs, ax
+   608 0000002A 8EE8                    	mov	gs, ax
+   609 0000002C 8ED0                    	mov	ss, ax
+   610 0000002E BC00000100              	mov esp, 0x10000
+   611 00000033 89E5                    	mov ebp, esp
+   612                                  
+   613                                  	;
+   614                                  	; 计算要映射的物理内存的大小（物理内存的1/8，向上对齐到4M边界且不超过256MB）。
+   615                                  	;
+   616 00000035 A1[FB000000]            	mov eax, [PhysicalMemorySize]
+   617 0000003A 3D00000080              	cmp eax, 0x80000000
+   618 0000003F 0F820F000000            	jb .DIVIDE
+   619                                  
+   620 00000045 C705[FF000000]0000-     	mov dword [MappedMemorySize], 0x20000000
+   621 0000004D 0020               
+   622 0000004F E912000000              	jmp .INIT_PDE
+   623                                  
+   624                                  .DIVIDE:
+   625 00000054 C1E803                  	shr eax, 3					; eax = eax/8
+   626 00000057 05FFFF3F00              	add eax, (0x400000 - 1)
+   627 0000005C 250000C0FF              	and eax, ~(0x400000 - 1)
+   628 00000061 A3[FF000000]            	mov [MappedMemorySize], eax
+   629                                  
+   630                                  	;
+   631                                  	; 对全部页目录项进行零初始化。
+   632                                  	;
+   633                                  .INIT_PDE:
+   634 00000066 31C0                    	xor eax, eax
+   635 00000068 8B3D[FF000000]          	mov edi, [MappedMemorySize]
+   636 0000006E B900040000              	mov ecx, 1024
+   637                                  .LOOP_1:
+   638 00000073 AB                      	stosd
+   639 00000074 49                      	dec ecx
+   640 00000075 0F85F8FFFFFF            	jnz .LOOP_1
+   641                                  
+   642                                  	;
+   643                                  	; 设置用于映射内存的页表项，页表跟在页目录后面。
+   644                                  	;
+   645 0000007B B803000000              	mov	eax, 0 | PG_ATTR		; 页表项内容
+   646 00000080 8B0D[FF000000]          	mov ecx, [MappedMemorySize]
+   647 00000086 C1E90C                  	shr ecx, 12
+   648                                  .LOOP_2:
+   649 00000089 AB                      	stosd
+   650 0000008A 0500100000              	add	eax, 4096				; 下一页被映射的物理内存的地址
+   651 0000008F 49                      	dec ecx
+   652 00000090 0F85F3FFFFFF            	jnz .LOOP_2
+   653                                  	
+   654                                  	;
+   655                                  	; 紧接着前面的页表再初始化一张空页表。
+   656                                  	;
+   657 00000096 31C0                    	xor eax, eax
+   658 00000098 B900040000              	mov ecx, 1024
+   659                                  .LOOP_3:
+   660 0000009D AB                      	stosd
+   661 0000009E 49                      	dec ecx
+   662 0000009F 0F85F8FFFFFF            	jnz .LOOP_3
+   663                                  
+   664                                  	;
+   665                                  	; 页表后面的内存是自由内存。
+   666                                  	;
+   667 000000A5 C1EF0C                  	shr edi, 12
+   668 000000A8 893D[0B010000]          	mov [FirstFreePageFrame], edi
+   669                                  
+   670                                  	;
+   671                                  	; 设置页目录项，映射物理内存。
+   672                                  	;
+   673                                  
+   674 000000AE A1[FF000000]            	mov eax, [MappedMemorySize]
+   675 000000B3 89C1                    	mov ecx, eax
+   676 000000B5 C1E916                  	shr ecx, 22					; ecx等于映射内存的页目录项数
+   677 000000B8 89C7                    	mov edi, eax				; edi指向第一个页目录项
+   678 000000BA 0500100000              	add eax, 4096				; eax指向第一张页表
+   679 000000BF 0D03000000              	or eax, PG_ATTR
+   680                                  
+   681                                  	;
+   682                                  	; 将0-4MB物理内存映射到虚拟地址0-4MB上。
+   683                                  	;
+   684 000000C4 8907                    	mov [edi], eax
+   685                                  
+   686                                  	;
+   687                                  	; 将0-MappedMemorySize物理内存映射到虚拟地址SYSTEM_VIRTUAL_BASE处。
+   688                                  	;
+   689 000000C6 81C700080000            	add edi, SYSTEM_VIRTUAL_BASE >> 20	; edi指向系统起始地址对应的页目录项
+   690                                  .LOOP_4:
+   691 000000CC AB                      	stosd
+   692 000000CD 0500100000              	add	eax, 4096						; 下一个页表的地址
+   693 000000D2 49                      	dec ecx
+   694 000000D3 0F85F3FFFFFF            	jnz .LOOP_4
+   695                                  	
+   696                                  	;
+   697                                  	; 此时eax还指向多初始化的一张页表，将之设置为页表空间后的4M空间的页表。
+   698                                  	;
+   699 000000D9 8B3D[FF000000]          	mov edi, [MappedMemorySize]
+   700 000000DF 81C7000C0000            	add edi, PTE_BASE >> 20
+   701 000000E5 894704                  	mov [edi+4], eax
+   702                                  	
+   703                                  	;
+   704                                  	; 将所有页表映射到页表空间，用页目录充当映射页表的页表。
+   705                                  	;
+   706 000000E8 A1[FF000000]            	mov eax, [MappedMemorySize]
+   707 000000ED 0D03000000              	or eax, PG_ATTR
+   708 000000F2 8907                    	mov [edi], eax
+   709                                  
+   710                                  	;
+   711                                  	; 启动分页机制
+   712                                  	;
+   713 000000F4 A1[FF000000]            	mov	eax, [MappedMemorySize]
+   714 000000F9 0F22D8                  	mov	cr3, eax
+   715 000000FC 0F20C0                  	mov	eax, cr0
+   716 000000FF 0D00000080              	or	eax, 0x80000000
+   717 00000104 0F22C0                  	mov	cr0, eax
+   718 00000107 EA[0E010080]0800        	jmp	dword CS_SELECTOR:(SYSTEM_VIRTUAL_BASE+.NOP)	; 跳转到虚拟地址上执行
+   719                                  .NOP:
+   720 0000010E 90                      	nop
+   721                                  	
+   722                                  	;
+   723                                  	; 调整栈指针，从已映射内存的最高处向下增长。
+   724                                  	;
+   725 0000010F 8B25[FF000000]          	mov esp, [MappedMemorySize]
+   726 00000115 81C400000080            	add esp, SYSTEM_VIRTUAL_BASE
+   727 0000011B 89E5                    	mov ebp, esp
+   728                                  
+   729                                  	;
+   730                                  	; 重新加载 GDT，使 GDTR 指向 GDT 的虚拟地址
+   731                                  	;
+   732 0000011D 68[0F000080]            	push dword GDT_VA
+   733 00000122 66681800                	push word GDT_SIZE
+   734 00000126 0F011424                	lgdt [esp]
+   735 0000012A 81C406000000            	add esp, 6
+   736                                  
+   737                                  	;
+   738                                  	; 关闭虚拟地址 0~4M 对物理内存 0~4M 的映射。
+   739                                  	;
+   740 00000130 C705000030C0000000-     	mov dword [PTE_BASE + (PTE_BASE>>10)], 0
+   741 00000139 00                 
+   742 0000013A 0F20D8                  	mov eax, cr3
+   743 0000013D 0F22D8                  	mov cr3, eax	; 刷新快表
+   744                                  
+   745                                  	;
+   746                                  	; 初始化内核镜像，将映像内的节对齐到各自所需位置。
+   747                                  	;
+   748 00000140 6800000180              	push dword IMAGE_VIRTUAL_BASE
+   749 00000145 E869000000              	call InitKernelImage
+   750                                  	
+   751                                  	;
+   752                                  	; 进入内核
+   753                                  	;
+   754 0000014A 68[FB000080]            	push dword va_LoaderBlock
+   755 0000014F FF15[17010080]          	call dword [va_ImageEntry]
+   756                                  	
+   757                                  ;----------------------------------------------------------------------------
+   758                                  ; 函	数：VOID MemCopy(DWORD *pDst, DWORD *pSrc, DWORD dwCountOfDWORD)
+   759                                  ; 作	用：按双字单位进行内存复制。
+   760                                  ;----------------------------------------------------------------------------
+   761                                  MemCopy:
+   762                                  ;{
+   763 00000155 55                      	push ebp
+   764 00000156 89E5                    	mov ebp, esp
+   765                                  	
+   766 00000158 8B7D08                  	mov edi, [ebp + 8]
+   767 0000015B 8B750C                  	mov esi, [ebp + 12]
+   768 0000015E 8B4D10                  	mov ecx, [ebp + 16]
+   769 00000161 89C8                    	mov eax, ecx
+   770 00000163 48                      	dec eax
+   771 00000164 C1E002                  	shl eax, 2
+   772 00000167 01C7                    	add edi, eax
+   773 00000169 01C6                    	add esi, eax
+   774                                  
+   775                                  .LOOP:
+   776 0000016B 81F900000000            	cmp ecx, 0
+   777 00000171 0F8416000000            	je .BREAK
+   778                                  	
+   779 00000177 8B06                    	mov eax, [esi]
+   780 00000179 8907                    	mov [edi], eax
+   781 0000017B 81EE04000000            	sub esi, 4
+   782 00000181 81EF04000000            	sub edi, 4
+   783 00000187 49                      	dec ecx
+   784 00000188 E9DEFFFFFF              	jmp .LOOP
+   785                                  .BREAK:
+   786                                  
+   787 0000018D C9                      	leave
+   788 0000018E C20C00                  	ret 12
+   789                                  ;}
+   790                                  
+   791                                  ;----------------------------------------------------------------------------
+   792                                  ; 函	数：VOID MemClear(DWORD *pDst, DWORD dwCountOfDWORD)
+   793                                  ; 作	用：按双字单位进行内存清零。
+   794                                  ;----------------------------------------------------------------------------
+   795                                  MemClear:
+   796                                  ;{
+   797 00000191 55                      	push ebp
+   798 00000192 89E5                    	mov ebp, esp
+   799                                  	
+   800 00000194 31C0                    	xor eax, eax
+   801 00000196 8B7D08                  	mov edi, [ebp + 8]
+   802 00000199 8B4D0C                  	mov ecx, [ebp + 12]
+   803                                  .LOOP:
+   804 0000019C 81F900000000            	cmp ecx, 0
+   805 000001A2 0F8407000000            	je .BREAK
+   806 000001A8 AB                      	stosd
+   807 000001A9 49                      	dec ecx
+   808 000001AA E9EDFFFFFF              	jmp .LOOP
+   809                                  .BREAK:
+   810                                  
+   811 000001AF C9                      	leave
+   812 000001B0 C20800                  	ret 8
+   813                                  ;}
+   814                                  	
+   815                                  ;----------------------------------------------------------------------------
+   816                                  ; 函	数：VOID InitKernelImage(DWORD dwImageBase)
+   817                                  ; 作	用：将文件对齐的映像展开为节对齐。
+   818                                  ;----------------------------------------------------------------------------
+   819                                  InitKernelImage:
+   820                                  ;{
+   821 000001B3 55                      	push ebp
+   822 000001B4 89E5                    	mov ebp, esp
+   823 000001B6 81EC08000000            	sub esp, 8
+   824                                  
+   825                                  	dwSections		equ -4
+   826                                  	pSectionHeader	equ -8	
+   827                                  
+   828 000001BC 8B4D08                  	mov ecx, [ebp + 8]					;ecx = dwImageBase = &IMAGE_DOS_HEADER
+   829 000001BF 8B413C                  	mov eax, [ecx + 0x3C]				;eax = IMAGE_DOS_HEADER::e_lfanew
+   830 000001C2 01C8                    	add eax, ecx						;eax = &IMAGE_NT_HEADERS = dwImageBase + IMAGE_DOS_HEADER::e_lfanew
+   831 000001C4 89C1                    	mov ecx, eax						;ecx =  &IMAGE_NT_HEADERS
+   832 000001C6 81F300000000            	xor ebx, 0
+   833 000001CC 668B5906                	mov WORD bx, [ecx + 0x06]			;ebx = IMAGE_FILE_HEADER::NumberOfSections
+   834 000001D0 895DFC                  	mov [ebp + dwSections], ebx			;dwSections = IMAGE_FILE_HEADER::NumberOfSections - 1
+   835 000001D3 B828000000              	mov eax, 0x28						;eax = sizeof(IMAGE_SECTION_HEADER)
+   836 000001D8 F7E3                    	mul ebx								;eax *= dwSections
+   837 000001DA 2D28000000              	sub eax, 0x28
+   838 000001DF 05F8000000              	add eax, 0xF8						;eax += sizeof(IMAGE_NT_HEADERS)
+   839 000001E4 01C8                    	add eax, ecx						;eax += &IMAGE_NT_HEADERS
+   840 000001E6 8945F8                  	mov [ebp + pSectionHeader], eax		;pSectionHeader = eax, Address of last section header
+   841                                  	
+   842                                  .LOOP:
+   843 000001E9 817DFC00000000          	cmp dword [ebp + dwSections], 0		; while(dwSections != 0)
+   844 000001F0 0F8460000000            	je .BREAK
+   845                                  
+   846 000001F6 8B4DF8                  	mov ecx, [ebp + pSectionHeader]
+   847 000001F9 8B4108                  	mov eax, [ecx + 0x08]				;eax = pSectionHeader->VirtualSize
+   848 000001FC 3D00000000              	cmp eax, 0							;if(eax == 0)
+   849 00000201 0F8440000000            	je	.CONTINUE						;	continue
+   850                                  
+   851 00000207 8B790C                  	mov edi, [ecx + 0x0C]				;edi = pSectionHeader->VirtualAddress
+   852 0000020A 8B7114                  	mov esi, [ecx + 0x14]				;esi = pSectionHeader->PointerToRawData
+   853 0000020D 39FE                    	cmp esi, edi						;if(edi == esi)
+   854 0000020F 0F8432000000            	je	.CONTINUE						;	continue
+   855                                  	
+   856 00000215 0503000000              	add eax, 3							;eax += 3;
+   857 0000021A C1E802                  	shr eax, 2							;eax /= 4;
+   858 0000021D 81FE00000000            	cmp esi, 0							;if(esi == 0) MemClear() else MemCopy()
+   859 00000223 0F850F000000            	jne	.MEM_COPY
+   860                                  
+   861 00000229 50                      	push eax
+   862 0000022A 037D08                  	add edi, dword [ebp + 8]
+   863 0000022D 57                      	push edi
+   864 0000022E E85EFFFFFF              	call MemClear
+   865 00000233 E90F000000              	jmp .CONTINUE
+   866                                  
+   867                                  .MEM_COPY:
+   868 00000238 50                      	push eax
+   869 00000239 8B4508                  	mov eax, [ebp + 8]					;┓
+   870 0000023C 01C6                    	add esi, eax
+   871 0000023E 56                      	push esi							;
+   872 0000023F 01C7                    	add edi, eax
+   873 00000241 57                      	push edi							;┣	MemCopy(edi, esi, eax)
+   874 00000242 E80EFFFFFF              	call MemCopy						;┛
+   875                                  	
+   876                                  .CONTINUE:
+   877 00000247 816DF828000000          	sub dword [ebp + pSectionHeader], 0x28	; pSectionHeader --
+   878 0000024E FF4DFC                  	dec dword [ebp + dwSections]			; wNumberOfSections --
+   879 00000251 E993FFFFFF              	jmp .LOOP
+   880                                  	
+   881                                  .BREAK:
+   882 00000256 C9                      	leave
+   883 00000257 C20400                  	ret 4
+   884                                  ;}
